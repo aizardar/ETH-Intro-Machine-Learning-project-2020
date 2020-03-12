@@ -20,7 +20,6 @@ for alpha in alphas:
     kf = KFold(n_splits= 10)
     kf.get_n_splits(X)
     for train_index, val_index in kf.split(X):
-        print(val_index)
         x_train, x_val = X[train_index], X[val_index]
         y_train, y_val = y[train_index], y[val_index]
         model = Ridge(alpha = alpha)
