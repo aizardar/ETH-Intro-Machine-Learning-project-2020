@@ -3,13 +3,14 @@ import tensorflow as tf
 from models import simple_model, threelayers
 import numpy as np
 from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
+from sklearn.impute import IterativeImputer, SimpleImputer
 from sklearn.model_selection import train_test_split, ParameterGrid
 from sklearn import preprocessing, svm
 from matplotlib import pyplot as plt
 import sklearn.metrics as metrics
 from hyperopt import Trials,fmin,STATUS_OK
 import hyperopt as hp
+import os
 
 
 
@@ -29,11 +30,15 @@ epochs = 1000
 # }
 search_space = {
     'loss': ['mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
-    'imputing': [True, False],
+    'nan_handling': ['impute', 'minusone', 'zero', 'mean', 'median', 'most_frequent'],
 }
-columns = [key for key in search_space.keys()]
-columns.append('roc_auc')
-params_results_df = pd.DataFrame(columns=columns)
+
+if not os.path.isfile('temp/params_results.csv'):
+    columns = [key for key in search_space.keys()]
+    columns.append('roc_auc')
+    params_results_df = pd.DataFrame(columns=columns)
+else:
+    params_results_df = pd.read_csv('temp/params_results.csv')
 
 search_space = list(ParameterGrid(search_space))
 
@@ -42,7 +47,6 @@ MAX_EVALS = 1000
 
 def test_model(params):
     print(params)
-    imputing = params['imputing']
     loss = params['loss']
     X_train_df = pd.read_csv('train_features.csv').sort_values(by= 'pid')
     y_train_df = pd.read_csv('train_labels.csv').sort_values(by= 'pid')
@@ -53,14 +57,23 @@ def test_model(params):
     """
     instead of imputing I could also set all the nans to -1
     """
-    if imputing == True:
+    if params['nan_handling'] == 'impute':
         imp = IterativeImputer(max_iter=10, random_state=seed)
         imp.fit(X_train_df)
         X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
         # X_train_df.to_csv('temp/imputed_taining_data.csv')
-
-    if not imputing == True:
+    elif params['nan_handling'] == 'knn':
+        imp = KNNImputer(n_neighbors=2, weights="uniform")
+        imp.fit(X_train_df)
+        X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
+    elif params['nan_handling'] == 'minusone':
         X_train_df = X_train_df.fillna(-1)
+    elif params['nan_handling'] == 'zero':
+        X_train_df = X_train_df.fillna(0)
+    else:
+        imp = SimpleImputer(missing_values=np.nan, strategy=params['nan_handling'])
+        imp.fit(X_train_df)
+        X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
     scaler = preprocessing.MinMaxScaler()
     x_train_df = pd.DataFrame(data = scaler.fit_transform(X_train_df.values[:, 1:]), columns = X_train_df.columns[1:])
     x_train_df.insert(0, 'pid', X_train_df['pid'].values)
@@ -107,8 +120,6 @@ def test_model(params):
     history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=input_shape[0]//batch_size, validation_steps = input_shape[0]//batch_size
                         , callbacks = callbacks
                         )
-
-
     print(model.summary())
     print('\nhistory dict:', history.history)
 
@@ -120,18 +131,16 @@ def test_model(params):
     roc_auc = np.mean([metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]])
     return roc_auc
 
-# params = {
-#     'loss': 'binary_crossentropy',
-#     'imputing': False,
-# }
-
 for params in search_space:
-    df = pd.DataFrame.from_records([params])
-    roc_auc = test_model(params)
-    df['roc_auc'] = roc_auc
-    params_results_df = params_results_df.append(df, sort= False)
+    try:
+        temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling'])]
+    except:
+        df = pd.DataFrame.from_records([params])
+        roc_auc = test_model(params)
+        df['roc_auc'] = roc_auc
+        params_results_df = params_results_df.append(df, sort= False)
 
-    params_results_df.to_csv('temp/params_results.csv', index= False)
+        params_results_df.to_csv('temp/params_results.csv', index= False)
 
 
 
