@@ -1,13 +1,13 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 
-def threelayers(input_shape):
+def threelayers(input_shape, loss):
 
     model = keras.Sequential()
 
     # Define first fully connected layer
     model.add(keras.layers.Dense(400,
-                                 input_shape=(120,),
+                                 input_shape=input_shape,
                                  activation=tf.nn.relu,
                                  kernel_initializer='he_normal',
                                  kernel_regularizer=keras.regularizers.l2(l=1e-3)))
@@ -27,10 +27,14 @@ def threelayers(input_shape):
     model.add(keras.layers.BatchNormalization(scale=False))
 
     # Add output layer
-    model.add(keras.layers.Dense(5, activation=None))
+    model.add(keras.layers.Dense(10, activation='sigmoid'))
+    model.add(keras.layers.Dense(10, activation=None))
+
 
     # Define optimizer
-    optimizer = tf.keras.optimizers.SGD(momentum=0.7, nesterov=True)
+    model.compile(optimizer='adagrad',
+                  loss=loss,
+                  metrics=['accuracy'])
     return model
 
 def simple_model(input_shape, loss):
