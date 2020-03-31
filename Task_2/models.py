@@ -28,7 +28,7 @@ def threelayers(input_shape, loss):
 
     # Add output layer
     model.add(keras.layers.Dense(10, activation='sigmoid'))
-
+    model.add(keras.layers.Dense(10, activation='linear'))
     # Define optimizer
     model.compile(optimizer='adagrad',
                   loss=loss,
