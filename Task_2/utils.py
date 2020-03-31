@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, SimpleImputer
 from sklearn import preprocessing
+import numpy as np
 
 def handle_nans(X_train_df, params, seed):
     if params['nan_handling'] == 'impute':
@@ -23,7 +24,6 @@ def handle_nans(X_train_df, params, seed):
         imp = SimpleImputer(missing_values=np.nan, strategy=params['nan_handling'])
         imp.fit(X_train_df)
         X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
-
     return X_train_df
 
 def scaler(params):
@@ -32,7 +32,7 @@ def scaler(params):
     elif params['standardizer'] == 'minmax':
         scaler = preprocessing.MinMaxScaler()
     elif params['standardizer'] == 'maxabsscaler':
-        scaler = preprocessing.maxabs_scale()
+        scaler = preprocessing.MaxAbsScaler()
     elif params['standardizer'] == 'standardscaler':
         scaler = preprocessing.StandardScaler()
     return scaler
