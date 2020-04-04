@@ -1,7 +1,7 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 
-def threelayers(input_shape, loss):
+def threelayers(input_shape, loss, output_layer):
 
     model = keras.Sequential()
 
@@ -27,8 +27,7 @@ def threelayers(input_shape, loss):
     model.add(keras.layers.BatchNormalization(scale=False))
 
     # Add output layer
-    model.add(keras.layers.Dense(10, activation='sigmoid'))
-    model.add(keras.layers.Dense(10, activation='linear'))
+    model.add(keras.layers.Dense(10, activation=output_layer))
     # Define optimizer
     model.compile(optimizer='adagrad',
                   loss=loss,

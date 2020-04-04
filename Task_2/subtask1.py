@@ -32,8 +32,10 @@ epochs = 1000
 # }
 search_space = {
     'loss': ['mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
-    'nan_handling': ['impute', 'minusone', 'zero', 'mean', 'median', 'most_frequent', 'drop'],
-    'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler']
+    'nan_handling': ['iterative', 'minusone', 'zero', 'mean', 'median', 'most_frequent', 'drop'],
+    'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
+    'output_layer': ['sigmoid', 'linear']
+
 }
 
 if not os.path.isfile('temp/params_results.csv'):
@@ -47,6 +49,14 @@ search_space = list(ParameterGrid(search_space))
 
 def test_model(params):
     print(params)
+    if params['nan_handling'] == 'iterative':
+        try:
+            from sklearn.experimental import enable_iterative_imputer
+            from sklearn.impute import IterativeImputer, SimpleImputer
+        except Exception as E:
+            print(E)
+            return np.nan
+
     loss = params['loss']
     X_train_df = pd.read_csv('train_features.csv').sort_values(by= 'pid')
     y_train_df = pd.read_csv('train_labels.csv').sort_values(by= 'pid')
@@ -104,7 +114,7 @@ def test_model(params):
         restore_best_weights=True)
     callbacks = [CB_es, CB_lr]
 
-    model = threelayers(input_shape, loss)
+    model = threelayers(input_shape, loss, params['output_layer'])
     history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=input_shape[0]//batch_size, validation_steps = input_shape[0]//batch_size
                         , callbacks = callbacks
                         )
@@ -122,7 +132,7 @@ def test_model(params):
 for params in search_space:
     try:
         sdf
-        temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling'])& (params_results_df['standardizer'] == params['standardizer'])]         #there should be a better way to check for an entry in a datafram
+        temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer'])]         #there should be a better way to check for an entry in a dataframe
         print('already tried this combination: ', params)
     except:
         df = pd.DataFrame.from_records([params])

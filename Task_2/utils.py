@@ -1,11 +1,12 @@
 import pandas as pd
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer, SimpleImputer
 from sklearn import preprocessing
 import numpy as np
+from sklearn.impute import SimpleImputer
 
 def handle_nans(X_train_df, params, seed):
-    if params['nan_handling'] == 'impute':
+    if params['nan_handling'] == 'iterative':
+        from sklearn.experimental import enable_iterative_imputer
+        from sklearn.impute import IterativeImputer, SimpleImputer
         imp = IterativeImputer(max_iter=10, random_state=seed)
         imp.fit(X_train_df)
         X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
