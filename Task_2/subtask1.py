@@ -35,7 +35,6 @@ search_space = {
     'nan_handling': ['iterative', 'minusone', 'zero', 'mean', 'median', 'most_frequent', 'drop'],
     'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
     'output_layer': ['sigmoid', 'linear']
-
 }
 
 if not os.path.isfile('temp/params_results.csv'):
@@ -58,15 +57,12 @@ def test_model(params):
             return np.nan
 
     loss = params['loss']
-    X_train_df = pd.read_csv('train_features.csv').sort_values(by= 'pid')
-    y_train_df = pd.read_csv('train_labels.csv').sort_values(by= 'pid')
+    X_train_df = pd.read_csv('train_features.csv').sort_values(by = 'pid')
+    y_train_df = pd.read_csv('train_labels.csv').sort_values(by = 'pid')
     y_train_df = y_train_df.iloc[:num_subjects, :10 + 1]
 
     X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
 
-    """
-    instead of imputing I could also set all the nans to -1
-    """
     X_train_df = utils.handle_nans(X_train_df, params, seed)
 
     """
@@ -79,13 +75,16 @@ def test_model(params):
 
     x_train = []
     for i, subject in enumerate(list(dict.fromkeys(x_train_df['pid'].values.tolist()))):
-        x_train.append(np.concatenate(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:]))
+        if X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:].shape[0] > 12:
+            raise Exception('more than 12 time-points')
+        x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
     input_shape = x_train[0].shape
+    y_train = list(y_train_df.values[:, 1:])
 
     """
     Splitting the dataset into train 60%, val 30% and test 10% 
     """
-    x_train, x_valtest, y_train, y_valtest = train_test_split(x_train, y_train_df.values[:, 1:], test_size=0.4, random_state=seed)
+    x_train, x_valtest, y_train, y_valtest = train_test_split(x_train, y_train, test_size=0.4, random_state=seed)
     x_val, x_test, y_val, y_test = train_test_split(x_valtest, y_valtest, test_size=0.3, random_state=seed)
 
     """
@@ -115,9 +114,7 @@ def test_model(params):
     callbacks = [CB_es, CB_lr]
 
     model = threelayers(input_shape, loss, params['output_layer'])
-    history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=input_shape[0]//batch_size, validation_steps = input_shape[0]//batch_size
-                        , callbacks = callbacks
-                        )
+    history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=len(x_train)//batch_size, validation_steps = len(x_train)//batch_size, callbacks = callbacks)
     print(model.summary())
     print('\nhistory dict:', history.history)
 
@@ -130,17 +127,22 @@ def test_model(params):
     return roc_auc
 
 for params in search_space:
-    try:
-        sdf
-        temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer'])]         #there should be a better way to check for an entry in a dataframe
-        print('already tried this combination: ', params)
-    except:
-        df = pd.DataFrame.from_records([params])
-        roc_auc = test_model(params)
-        df['roc_auc'] = roc_auc
-        params_results_df = params_results_df.append(df, sort= False)
+    # already_tested = params_results_df.isin({'loss': [params['loss']], 'nan_handling': [params['nan_handling']], 'standardizer':[params['standardizer']]})
+    # try:
+    #     sdf
+    #     temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer'])]         #there should be a better way to check for an entry in a dataframe
+    #     print('already tried this combination: ', params)
+    # except:
+    #     df = pd.DataFrame.from_records([params])
+    #     roc_auc = test_model(params)
+    #     df['roc_auc'] = roc_auc
+    #     params_results_df = params_results_df.append(df, sort= False)
+    df = pd.DataFrame.from_records([params])
+    roc_auc = test_model(params)
+    df['roc_auc'] = roc_auc
+    params_results_df = params_results_df.append(df, sort= False)
 
-        params_results_df.to_csv('temp/params_results.csv', index= False)
+    params_results_df.to_csv('temp/params_results.csv', index= False)
 
 
 

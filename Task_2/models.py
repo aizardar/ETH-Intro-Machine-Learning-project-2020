@@ -25,7 +25,7 @@ def threelayers(input_shape, loss, output_layer):
     # Add dropout for overfitting avoidance and batch normalization layer
     model.add(keras.layers.Dropout(rate=0.3))
     model.add(keras.layers.BatchNormalization(scale=False))
-
+    model.add(keras.layers.Flatten())
     # Add output layer
     model.add(keras.layers.Dense(10, activation=output_layer))
     # Define optimizer
