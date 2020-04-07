@@ -1,5 +1,6 @@
 import pandas as pd
 import tensorflow as tf
+import models
 from models import simple_model, threelayers
 import numpy as np
 from sklearn.model_selection import train_test_split, ParameterGrid
@@ -8,6 +9,8 @@ from matplotlib import pyplot as plt
 import sklearn.metrics as metrics
 import os
 import utils
+import functools, operator
+from models import dice_coef_loss
 
 hyperopt = False
 if hyperopt:
@@ -19,32 +22,43 @@ if hyperopt:
 """
 Predict whether medical tests are ordered by a clinician in the remainder of the hospital stay: 0 means that there will be no further tests of this kind ordered, 1 means that at least one of a test of that kind will be ordered. In the submission file, you are asked to submit predictions in the interval [0, 1], i.e., the predictions are not restricted to binary. 0.0 indicates you are certain this test will not be ordered, 1.0 indicates you are sure it will be ordered. The corresponding columns containing the binary groundtruth in train_labels.csv are: LABEL_BaseExcess, LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2, LABEL_Bilirubin_direct, LABEL_EtCO2.
 10 labels for this subtask
+
+Questions:
+    - include time axis in training data?
+    - use a SVM for each value to predict?
 """
 
 seed = 100
 batch_size = 64
-num_subjects = -1          #number of subjects out of 18995
-epochs = 1000
+num_subjects = 500         #number of subjects out of 18995
+epochs = 50
 
-# search_space = {
-#     'loss': hp.hp.choice('loss', ['mean_squared_error', 'binary_crossentropy', 'categorical_hinge']),
-#     'imputing': hp.hp.choice('imputing', [True, False]),
-# }
-search_space = {
-    'loss': ['mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
-    'nan_handling': ['iterative', 'minusone', 'zero', 'mean', 'median', 'most_frequent', 'drop'],
+search_space_dict = {
+    'loss': ['dice', 'mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
+    'nan_handling': ['minusone', 'zero', 'iterative'],
+    'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler', 'none'],
+    'output_layer': ['sigmoid', 'linear'],
+    'model': ['svm', 'threelayers'],
+}
+search_space_dict = {
+    'loss': ['dice'],
+    'nan_handling': ['minusone'],
     'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
-    'output_layer': ['sigmoid', 'linear']
+    'output_layer': ['sigmoid', 'linear'],
+    'model': ['svm', 'threelayers'],
 }
 
 if not os.path.isfile('temp/params_results.csv'):
-    columns = [key for key in search_space.keys()]
+    columns = [key for key in search_space_dict.keys()]
     columns.append('roc_auc')
     params_results_df = pd.DataFrame(columns=columns)
 else:
     params_results_df = pd.read_csv('temp/params_results.csv')
+    for key in search_space_dict.keys():
+        if not key in list(params_results_df.columns):
+            params_results_df[key] = np.nan
 
-search_space = list(ParameterGrid(search_space))
+search_space = list(ParameterGrid(search_space_dict))
 
 def test_model(params):
     print(params)
@@ -57,19 +71,24 @@ def test_model(params):
             return np.nan
 
     loss = params['loss']
+    if loss == 'dice':
+        loss = dice_coef_loss
     X_train_df = pd.read_csv('train_features.csv').sort_values(by = 'pid')
     y_train_df = pd.read_csv('train_labels.csv').sort_values(by = 'pid')
     y_train_df = y_train_df.iloc[:num_subjects, :10 + 1]
 
     X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
-
+    X_train_df = utils.impute_NN(X_train_df)
     X_train_df = utils.handle_nans(X_train_df, params, seed)
 
     """
     Scaling data
     """
-    scaler = utils.scaler(params)
-    x_train_df = pd.DataFrame(data = scaler.fit_transform(X_train_df.values[:, 1:]), columns = X_train_df.columns[1:])
+    if not params['standardizer'] == 'none':
+        scaler = utils.scaler(params)
+        x_train_df = pd.DataFrame(data = scaler.fit_transform(X_train_df.values[:, 1:]), columns = X_train_df.columns[1:])
+    else:
+        x_train_df = X_train_df
     x_train_df.insert(0, 'pid', X_train_df['pid'].values)
     # x_train_df.to_csv('temp/taining_data.csv')
 
@@ -113,7 +132,10 @@ def test_model(params):
         restore_best_weights=True)
     callbacks = [CB_es, CB_lr]
 
-    model = threelayers(input_shape, loss, params['output_layer'])
+    if params['model'] == 'threelayers':
+        model = threelayers(input_shape, loss, params['output_layer'])
+    elif params['model'] == 'svm':
+        model = models.svm(input_shape, loss, params['output_layer'])
     history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=len(x_train)//batch_size, validation_steps = len(x_train)//batch_size, callbacks = callbacks)
     print(model.summary())
     print('\nhistory dict:', history.history)
@@ -127,17 +149,15 @@ def test_model(params):
     return roc_auc
 
 for params in search_space:
-    temp_df = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer']) & (params_results_df['output_layer'] == params['output_layer']), "roc_auc"]
-    not_tested = temp_df.empty or temp_df.isna()
-    print(temp_df)
+    a = params_results_df.loc[(), 'roc_auc']
+    temp_df = params_results_df.loc[functools.reduce(operator.and_, (params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in search_space_dict.keys())), 'roc_auc']
+    not_tested = temp_df.empty or temp_df.isna().all()
     if not_tested:
-        print(not_tested)
         df = pd.DataFrame.from_records([params])
         roc_auc = test_model(params)
         df['roc_auc'] = roc_auc
         params_results_df = params_results_df.append(df, sort= False)
     else:
-        print(not_tested)
         print('already tried this combination: ', params)
     df = pd.DataFrame.from_records([params])
     roc_auc = test_model(params)
