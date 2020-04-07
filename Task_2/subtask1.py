@@ -127,16 +127,18 @@ def test_model(params):
     return roc_auc
 
 for params in search_space:
-    # already_tested = params_results_df.isin({'loss': [params['loss']], 'nan_handling': [params['nan_handling']], 'standardizer':[params['standardizer']]})
-    # try:
-    #     sdf
-    #     temp = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer'])]         #there should be a better way to check for an entry in a dataframe
-    #     print('already tried this combination: ', params)
-    # except:
-    #     df = pd.DataFrame.from_records([params])
-    #     roc_auc = test_model(params)
-    #     df['roc_auc'] = roc_auc
-    #     params_results_df = params_results_df.append(df, sort= False)
+    temp_df = params_results_df.loc[(params_results_df['loss'] == params['loss']) & (params_results_df['nan_handling'] == params['nan_handling']) & (params_results_df['standardizer'] == params['standardizer']) & (params_results_df['output_layer'] == params['output_layer']), "roc_auc"]
+    not_tested = temp_df.empty or temp_df.isna()
+    print(temp_df)
+    if not_tested:
+        print(not_tested)
+        df = pd.DataFrame.from_records([params])
+        roc_auc = test_model(params)
+        df['roc_auc'] = roc_auc
+        params_results_df = params_results_df.append(df, sort= False)
+    else:
+        print(not_tested)
+        print('already tried this combination: ', params)
     df = pd.DataFrame.from_records([params])
     roc_auc = test_model(params)
     df['roc_auc'] = roc_auc
