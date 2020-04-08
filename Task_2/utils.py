@@ -3,6 +3,7 @@ from sklearn import preprocessing
 import numpy as np
 import sklearn
 from sklearn.impute import SimpleImputer
+from tqdm import tqdm
 
 def handle_nans(X_train_df, params, seed):
     if params['nan_handling'] == 'iterative':
@@ -36,11 +37,9 @@ def scaler(params):
 def impute_NN(df):
     imputed_df = pd.DataFrame(columns=df.columns)
     imp = sklearn.impute.KNNImputer(n_neighbors=1)
-    imp.fit(df)
-    for pid in np.unique(df['pid'].values):
+    for pid in tqdm(np.unique(df['pid'].values)):
         temp_df = df.loc[df['pid'] == pid]
         temp_df2 = temp_df.dropna(axis = 'columns', how = 'all')
-        imp = sklearn.impute.KNNImputer(n_neighbors=1)
         imp.fit(temp_df2)
         temp_df2 = pd.DataFrame(data = imp.transform(temp_df2), columns = temp_df2.columns)
         for key in temp_df.columns:

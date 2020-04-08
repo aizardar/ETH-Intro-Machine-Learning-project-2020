@@ -52,8 +52,19 @@ else:
             params_results_df[key] = np.nan
 
 search_space = list(ParameterGrid(search_space_dict))
+y_train_df = pd.read_csv('train_labels.csv').sort_values(by='pid')
+y_train_df = y_train_df.iloc[:num_subjects, :10 + 1]
 
-def test_model(params):
+if not os.path.isfile('xtrain_imputedNN{}.csv'.format(num_subjects)):
+    X_train_df = pd.read_csv('train_features.csv').sort_values(by='pid')
+    X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
+    X_train_df = utils.impute_NN(X_train_df)
+    X_train_df.to_csv('xtrain_imputedNN{}.csv'.format(num_subjects))
+else:
+    X_train_df = pd.read_csv('xtrain_imputedNN{}.csv'.format(num_subjects))
+
+
+def test_model(params, X_train_df, y_train_df):
     print(params)
     if params['nan_handling'] == 'iterative':
         try:
@@ -66,13 +77,7 @@ def test_model(params):
     loss = params['loss']
     if loss == 'dice':
         loss = dice_coef_loss
-    X_train_df = pd.read_csv('train_features.csv').sort_values(by = 'pid')
-    y_train_df = pd.read_csv('train_labels.csv').sort_values(by = 'pid')
-    y_train_df = y_train_df.iloc[:num_subjects, :10 + 1]
 
-    X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
-    X_train_df = utils.impute_NN(X_train_df)
-    X_train_df.to_csv('temp/imputedNN.csv')
     X_train_df = utils.handle_nans(X_train_df, params, seed)
 
     """
@@ -148,7 +153,7 @@ for params in search_space:
     not_tested = temp_df.empty or temp_df.isna().all()
     if not_tested:
         df = pd.DataFrame.from_records([params])
-        roc_auc = test_model(params)
+        roc_auc = test_model(params, X_train_df, y_train_df)
         df['roc_auc'] = roc_auc
         params_results_df = params_results_df.append(df, sort= False)
     else:
