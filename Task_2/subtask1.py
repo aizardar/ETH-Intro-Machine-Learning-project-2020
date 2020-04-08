@@ -30,20 +30,13 @@ Questions:
 
 seed = 100
 batch_size = 64
-num_subjects = 500         #number of subjects out of 18995
+num_subjects = -1         #number of subjects out of 18995
 epochs = 50
 
 search_space_dict = {
     'loss': ['dice', 'mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
     'nan_handling': ['minusone', 'zero', 'iterative'],
-    'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler', 'none'],
-    'output_layer': ['sigmoid', 'linear'],
-    'model': ['svm', 'threelayers'],
-}
-search_space_dict = {
-    'loss': ['dice'],
-    'nan_handling': ['minusone'],
-    'standardizer': ['RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
+    'standardizer': ['none', 'RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
     'output_layer': ['sigmoid', 'linear'],
     'model': ['svm', 'threelayers'],
 }
@@ -79,6 +72,7 @@ def test_model(params):
 
     X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
     X_train_df = utils.impute_NN(X_train_df)
+    X_train_df.to_csv('temp/imputedNN.csv')
     X_train_df = utils.handle_nans(X_train_df, params, seed)
 
     """
