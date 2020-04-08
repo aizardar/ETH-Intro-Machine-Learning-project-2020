@@ -26,15 +26,18 @@ if hyperopt:
 Predict whether medical tests are ordered by a clinician in the remainder of the hospital stay: 0 means that there will be no further tests of this kind ordered, 1 means that at least one of a test of that kind will be ordered. In the submission file, you are asked to submit predictions in the interval [0, 1], i.e., the predictions are not restricted to binary. 0.0 indicates you are certain this test will not be ordered, 1.0 indicates you are sure it will be ordered. The corresponding columns containing the binary groundtruth in train_labels.csv are: LABEL_BaseExcess, LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2, LABEL_Bilirubin_direct, LABEL_EtCO2.
 10 labels for this subtask
 
+fill base excess with 0
+fibrogen with -1
+
 Questions:
     - include time axis in training data?
     - use a SVM for each value to predict?
 """
-
-seed = 100
+test = False
+seed = 10
 batch_size = 64
-num_subjects = 600         #number of subjects out of 18995
-epochs = 50
+num_subjects = -1         #number of subjects out of 18995
+epochs = 1000
 
 search_space_dict = {
     'loss': ['dice', 'mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
@@ -43,6 +46,14 @@ search_space_dict = {
     'output_layer': ['sigmoid', 'linear'],
     'model': ['svm', 'threelayers'],
 }
+# test = True
+# search_space_dict = {
+#     'loss': ['mean_squared_error'],
+#     'nan_handling': ['minusone'],
+#     'standardizer': ['none'],
+#     'output_layer': ['sigmoid'],
+#     'model': ['svm'],
+# }
 
 if not os.path.isfile('temp/params_results.csv'):
     columns = [key for key in search_space_dict.keys()]
@@ -115,8 +126,8 @@ def test_model(params, X_train_df, y_train_df):
     train_dataset = train_dataset.shuffle(len(x_train)).batch(batch_size=batch_size).repeat()
     val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
     val_dataset = val_dataset.shuffle(len(x_val)).batch(batch_size=batch_size).repeat()
-    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
-    test_dataset = test_dataset.shuffle(len(x_test)).batch(batch_size=batch_size)
+    test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+    test_dataset = test_dataset.batch(batch_size=1)
 
     """
     Callbacks 
@@ -148,7 +159,7 @@ def test_model(params, X_train_df, y_train_df):
     # prediction_df.to_csv('temp/result.csv')
     y_test_df = pd.DataFrame(y_test, columns= y_train_df.columns[1:])
     # y_test_df.to_csv('temp/ytrue.csv')
-    dice_score = [1- dice(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]]
+    dice_score = [1 - dice(y_test_df[entry], np.where(prediction_df[entry] > 0.5, 1, 0)) for entry in y_train_df.columns[1:]]
     mean_dice = np.mean(dice_score)
     roc_auc = [metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]]
     mean_roc_auc = np.mean(roc_auc)
@@ -158,7 +169,7 @@ for params in tqdm(search_space):
     a = params_results_df.loc[(), 'roc_auc']
     temp_df = params_results_df.loc[functools.reduce(operator.and_, (params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in search_space_dict.keys())), 'roc_auc']
     not_tested = temp_df.empty or temp_df.isna().all()
-    if not_tested:
+    if not_tested or test == True:
         df = pd.DataFrame.from_records([params])
         scores = test_model(params, X_train_df, y_train_df)
         for column, score in zip(['roc_auc', 'mean_roc_auc', 'dice_score', 'mean_dice'],scores):
@@ -171,7 +182,8 @@ for params in tqdm(search_space):
         params_results_df = params_results_df.append(df, sort= False)
     else:
         print('already tried this combination: ', params)
-    params_results_df.to_csv('temp/params_results.csv', index= False)
+    if not test == True:
+        params_results_df.to_csv('temp/params_results.csv', index= False)
 
 
 
