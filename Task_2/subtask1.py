@@ -12,6 +12,8 @@ import utils
 import functools, operator
 from models import dice_coef_loss
 from tqdm import tqdm
+from scipy.spatial.distance import dice
+
 
 hyperopt = False
 if hyperopt:
@@ -127,6 +129,7 @@ def test_model(params, X_train_df, y_train_df):
 
     CB_es = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
         min_delta= 0.0001,
+        verbose= 1,
         patience= 10,
         mode='min',
         restore_best_weights=True)
@@ -145,8 +148,11 @@ def test_model(params, X_train_df, y_train_df):
     # prediction_df.to_csv('temp/result.csv')
     y_test_df = pd.DataFrame(y_test, columns= y_train_df.columns[1:])
     # y_test_df.to_csv('temp/ytrue.csv')
-    roc_auc = np.mean([metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]])
-    return roc_auc
+    dice_score = [1- dice(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]]
+    mean_dice = np.mean(dice_score)
+    roc_auc = [metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]]
+    mean_roc_auc = np.mean(roc_auc)
+    return roc_auc, mean_roc_auc, dice_score, mean_dice
 
 for params in tqdm(search_space):
     a = params_results_df.loc[(), 'roc_auc']
@@ -154,8 +160,14 @@ for params in tqdm(search_space):
     not_tested = temp_df.empty or temp_df.isna().all()
     if not_tested:
         df = pd.DataFrame.from_records([params])
-        roc_auc = test_model(params, X_train_df, y_train_df)
-        df['roc_auc'] = roc_auc
+        scores = test_model(params, X_train_df, y_train_df)
+        for column, score in zip(['roc_auc', 'mean_roc_auc', 'dice_score', 'mean_dice'],scores):
+            if type(score) == list:
+                df[column] = -1
+                df[column] = df[column].astype('object')
+                df.at[0, column] = score
+            else:
+                df[column] = score
         params_results_df = params_results_df.append(df, sort= False)
     else:
         print('already tried this combination: ', params)
