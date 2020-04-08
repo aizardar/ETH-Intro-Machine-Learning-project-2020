@@ -11,6 +11,7 @@ import os
 import utils
 import functools, operator
 from models import dice_coef_loss
+from tqdm import tqdm
 
 hyperopt = False
 if hyperopt:
@@ -30,7 +31,7 @@ Questions:
 
 seed = 100
 batch_size = 64
-num_subjects = -1         #number of subjects out of 18995
+num_subjects = 600         #number of subjects out of 18995
 epochs = 50
 
 search_space_dict = {
@@ -59,13 +60,13 @@ if not os.path.isfile('xtrain_imputedNN{}.csv'.format(num_subjects)):
     X_train_df = pd.read_csv('train_features.csv').sort_values(by='pid')
     X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
     X_train_df = utils.impute_NN(X_train_df)
-    X_train_df.to_csv('xtrain_imputedNN{}.csv'.format(num_subjects))
+    X_train_df.to_csv('xtrain_imputedNN{}.csv'.format(num_subjects), index = False)
 else:
     X_train_df = pd.read_csv('xtrain_imputedNN{}.csv'.format(num_subjects))
 
 
 def test_model(params, X_train_df, y_train_df):
-    print(params)
+    print('\n', params)
     if params['nan_handling'] == 'iterative':
         try:
             from sklearn.experimental import enable_iterative_imputer
@@ -86,9 +87,9 @@ def test_model(params, X_train_df, y_train_df):
     if not params['standardizer'] == 'none':
         scaler = utils.scaler(params)
         x_train_df = pd.DataFrame(data = scaler.fit_transform(X_train_df.values[:, 1:]), columns = X_train_df.columns[1:])
+        x_train_df.insert(0, 'pid', X_train_df['pid'].values)
     else:
         x_train_df = X_train_df
-    x_train_df.insert(0, 'pid', X_train_df['pid'].values)
     # x_train_df.to_csv('temp/taining_data.csv')
 
     x_train = []
@@ -147,7 +148,7 @@ def test_model(params, X_train_df, y_train_df):
     roc_auc = np.mean([metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in y_train_df.columns[1:]])
     return roc_auc
 
-for params in search_space:
+for params in tqdm(search_space):
     a = params_results_df.loc[(), 'roc_auc']
     temp_df = params_results_df.loc[functools.reduce(operator.and_, (params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in search_space_dict.keys())), 'roc_auc']
     not_tested = temp_df.empty or temp_df.isna().all()
@@ -158,11 +159,6 @@ for params in search_space:
         params_results_df = params_results_df.append(df, sort= False)
     else:
         print('already tried this combination: ', params)
-    df = pd.DataFrame.from_records([params])
-    roc_auc = test_model(params)
-    df['roc_auc'] = roc_auc
-    params_results_df = params_results_df.append(df, sort= False)
-
     params_results_df.to_csv('temp/params_results.csv', index= False)
 
 

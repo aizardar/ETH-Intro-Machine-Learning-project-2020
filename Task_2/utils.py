@@ -46,5 +46,5 @@ def impute_NN(df):
             if temp_df[key].isna().all():
                 temp_df2[key] = np.nan
         imputed_df = imputed_df.append(temp_df2, sort = True)
-    imputed_df = imputed_df[['pid'] + [col for col in imputed_df.columns if col != 'pid']]
+    imputed_df.reindex(columns = df.columns)
     return imputed_df
