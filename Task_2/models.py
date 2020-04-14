@@ -5,10 +5,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras import backend as K
 
-def threelayers(input_shape, loss, output_layer, output_bias = None):
+def threelayers(input_shape, loss, output_layer):
     model = keras.Sequential()
-    if output_bias is not None:
-        output_bias = tf.keras.initializers.Constant(output_bias)
+
     model.add(keras.layers.BatchNormalization(axis=-1))
     # Define first fully connected layer
     model.add(keras.layers.Dense(400,
