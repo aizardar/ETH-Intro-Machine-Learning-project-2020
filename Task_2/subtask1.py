@@ -10,18 +10,11 @@ import sklearn.metrics as metrics
 import os
 import utils
 import functools, operator
-from models import dice_coef_loss
+from models import dice_coef_loss, build_model
 from tqdm import tqdm
 from scipy.spatial.distance import dice
-
-
-hyperopt = False
-if hyperopt:
-    from hyperopt import Trials, fmin, STATUS_OK
-    import hyperopt as hp
-    bayes_trials = Trials()
-    MAX_EVALS = 1000
-
+import kerastuner
+from kerastuner import RandomSearch
 """
 Predict whether medical tests are ordered by a clinician in the remainder of the hospital stay: 0 means that there will be no further tests of this kind ordered, 1 means that at least one of a test of that kind will be ordered. In the submission file, you are asked to submit predictions in the interval [0, 1], i.e., the predictions are not restricted to binary. 0.0 indicates you are certain this test will not be ordered, 1.0 indicates you are sure it will be ordered. The corresponding columns containing the binary groundtruth in train_labels.csv are: LABEL_BaseExcess, LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2, LABEL_Bilirubin_direct, LABEL_EtCO2.
 10 labels for this subtask
@@ -35,25 +28,27 @@ Questions:
 """
 test = False
 seed = 10
-batch_size = 64
+batch_size = 2048
 num_subjects = -1         #number of subjects out of 18995
 epochs = 1000
+TRIALS = 50
 
 search_space_dict = {
-    'loss': ['dice', 'mean_squared_error', 'binary_crossentropy', 'categorical_hinge'],
-    'nan_handling': ['minusone', 'zero', 'iterative'],
-    'standardizer': ['none', 'RobustScaler', 'minmax', 'maxabsscaler', 'standardscaler'],
-    'output_layer': ['sigmoid', 'linear'],
-    'model': ['svm', 'threelayers'],
+    'loss': ['dice','binary_crossentropy'],
+    'nan_handling': ['minusone'],
+    'standardizer': ['none'],
+    'output_layer': ['sigmoid'],
+    'model': ['threelayers'],
 }
-# test = True
-# search_space_dict = {
-#     'loss': ['mean_squared_error'],
-#     'nan_handling': ['minusone'],
-#     'standardizer': ['none'],
-#     'output_layer': ['sigmoid'],
-#     'model': ['svm'],
-# }
+test = True
+search_space_dict = {
+    'loss': ['binary_crossentropy'],
+    'nan_handling': ['minusone'],
+    'standardizer': ['none'],
+    'output_layer': ['sigmoid'],
+    'model': ['threelayers'],
+    'keras_tuner': ['True'],
+}
 
 if not os.path.isfile('temp/params_results.csv'):
     columns = [key for key in search_space_dict.keys()]
@@ -73,6 +68,7 @@ if not os.path.isfile('xtrain_imputedNN{}.csv'.format(num_subjects)):
     X_train_df = pd.read_csv('train_features.csv').sort_values(by='pid')
     X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
     X_train_df = utils.impute_NN(X_train_df)
+    # X_train_df['BaseExcess'].fillna(0)
     X_train_df.to_csv('xtrain_imputedNN{}.csv'.format(num_subjects), index = False)
 else:
     X_train_df = pd.read_csv('xtrain_imputedNN{}.csv'.format(num_subjects))
@@ -80,19 +76,22 @@ else:
 
 def test_model(params, X_train_df, y_train_df):
     print('\n', params)
-    if params['nan_handling'] == 'iterative':
-        try:
-            from sklearn.experimental import enable_iterative_imputer
-            from sklearn.impute import IterativeImputer, SimpleImputer
-        except Exception as E:
-            print(E)
-            return np.nan
-
+    path = 'nan_handling/{}_{}'.format(num_subjects, params['nan_handling'])
+    if os.path.isfile(path):
+        X_train_df = pd.read_csv(path)
+    else:
+        if params['nan_handling'] == 'iterative':
+            try:
+                from sklearn.experimental import enable_iterative_imputer
+                from sklearn.impute import IterativeImputer, SimpleImputer
+            except Exception as E:
+                print(E)
+                return np.nan
+        X_train_df = utils.handle_nans(X_train_df, params, seed)
+        X_train_df.to_csv(path, index = False)
     loss = params['loss']
     if loss == 'dice':
         loss = dice_coef_loss
-
-    X_train_df = utils.handle_nans(X_train_df, params, seed)
 
     """
     Scaling data
@@ -145,14 +144,24 @@ def test_model(params, X_train_df, y_train_df):
         mode='min',
         restore_best_weights=True)
     callbacks = [CB_es, CB_lr]
+    if params['keras_tuner'] == 'False':
+        if params['model'] == 'threelayers':
+            model = threelayers(input_shape, loss, params['output_layer'])
+        elif params['model'] == 'svm':
+            model = models.svm(input_shape, loss, params['output_layer'])
+        model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=len(x_train) // batch_size,
+                  validation_steps=len(x_train) // batch_size, callbacks=callbacks)
+    elif params['keras_tuner'] == 'True':
+        print(input_shape)
+        tuner = RandomSearch(build_model, objective= kerastuner.Objective("val_auc", direction="min"), max_trials=TRIALS,
+                             project_name='subtask1_results')
+        tuner.search_space_summary()
+        tuner.search(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=len(x_train)//batch_size, validation_steps = len(x_train)//batch_size, callbacks = callbacks)
+        tuner.results_summary()
 
-    if params['model'] == 'threelayers':
-        model = threelayers(input_shape, loss, params['output_layer'])
-    elif params['model'] == 'svm':
-        model = models.svm(input_shape, loss, params['output_layer'])
-    history = model.fit(train_dataset, validation_data = val_dataset, epochs = epochs, steps_per_epoch=len(x_train)//batch_size, validation_steps = len(x_train)//batch_size, callbacks = callbacks)
-    print(model.summary())
-    print('\nhistory dict:', history.history)
+        # Retrieve the best model and display its architecture
+        model = tuner.get_best_models(num_models=1)[0]
+        # model.summary()
 
     prediction = model.predict(test_dataset)
     prediction_df = pd.DataFrame(prediction, columns= y_train_df.columns[1:])
@@ -179,6 +188,7 @@ for params in tqdm(search_space):
                 df.at[0, column] = score
             else:
                 df[column] = score
+        print(df)
         params_results_df = params_results_df.append(df, sort= False)
     else:
         print('already tried this combination: ', params)

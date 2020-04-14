@@ -5,10 +5,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras import backend as K
 
-def threelayers(input_shape, loss, output_layer):
-
+def threelayers(input_shape, loss, output_layer, output_bias = None):
     model = keras.Sequential()
-
+    if output_bias is not None:
+        output_bias = tf.keras.initializers.Constant(output_bias)
     model.add(keras.layers.BatchNormalization(axis=-1))
     # Define first fully connected layer
     model.add(keras.layers.Dense(400,
@@ -36,9 +36,35 @@ def threelayers(input_shape, loss, output_layer):
     # Define optimizer
     model.compile(optimizer='adagrad',
                   loss=loss,
-                  metrics=[dice_coef, 'mse'])
+                  metrics=[dice_coef, 'mse', keras.metrics.AUC()])
     return model
 
+def build_model(hp):
+    model = keras.Sequential()
+    model.add(keras.layers.BatchNormalization(axis=-1, scale= hp.Choice('bn_scale_' + str(0), ['True', 'False'])))
+    model.add(keras.layers.Dense(hp.Int('units_' + str(0),min_value=32,
+                                            max_value=512,
+                                            step=32),
+                                 input_shape=(12, 36),
+                                 activation=tf.nn.relu,
+                                 kernel_initializer='he_normal',
+                                 kernel_regularizer=keras.regularizers.l2(l=1e-3)))
+    for i in range(hp.Int('num_layers', 2, 20)):
+        model.add(keras.layers.Dense(units=hp.Int('units_' + str(i),
+                                            min_value=32,
+                                            max_value=512,
+                                            step=32),
+                               activation='relu'))
+        model.add(keras.layers.Dropout(rate=hp.Choice('dropout_rate_' + str(i), [0.0, 0.3, 0.5])))
+    model.add(keras.layers.BatchNormalization(axis=-1, scale= hp.Choice('bn_scale_' + str(1), ['True', 'False'])))
+    model.add(keras.layers.Flatten())
+    model.add(keras.layers.Dense(10, activation='sigmoid'))
+    model.compile(
+        optimizer=keras.optimizers.Adadelta(
+            hp.Choice('learning_rate', [1.0])),
+        loss='binary_crossentropy',
+        metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+    return model
 
 def svm(input_shape, loss, output_layer):
     model = Sequential()
