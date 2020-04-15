@@ -40,7 +40,7 @@ def threelayers(input_shape, loss, output_layer, task):
         model.add(keras.layers.Dense(1, activation=output_layer))
         model.compile(optimizer='adagrad', loss='binary_crossentropy', metrics=['sparse_categorical_accuracy'])
     if task == 3:
-        model.add(keras.layers.Dense(4, activation=output_layer))
+        model.add(keras.layers.Dense(4, activation='linear'))
         model.compile(optimizer='adagrad',
                       loss=loss,
                       metrics=[dice_coef, 'mse', keras.metrics.AUC()])

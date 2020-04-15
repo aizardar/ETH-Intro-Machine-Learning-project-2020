@@ -9,8 +9,12 @@ import kerastuner
 from kerastuner import RandomSearch
 import tensorflow as tf
 import models
+import sklearn.metrics as metrics
+from scipy.spatial.distance import dice
+
 
 def handle_nans(X_train_df, params, seed):
+    print('handling nans with method {}'.format(params['nan_handling']))
     if params['nan_handling'] == 'iterative':
         from sklearn.experimental import enable_iterative_imputer
         from sklearn.impute import IterativeImputer
@@ -54,12 +58,12 @@ def impute_NN(df):
     imputed_df.reindex(columns = df.columns)
     return imputed_df
 
-def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task):
+def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task, y_train_df):
     """
     Splitting the dataset into train 60%, val 30% and test 10%
     """
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.3, random_state=seed)
-
+    x_train, x_valtest, y_train, y_valtest = train_test_split(x_train, y_train, test_size=0.4, random_state=seed)
+    x_val, x_test, y_val, y_test = train_test_split(x_valtest, y_valtest, test_size=0.3, random_state=seed)
     """
     Making datasets
     """
@@ -101,4 +105,24 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task)
 
         # Retrieve the best model and display its architecture
         model = tuner.get_best_models(num_models=1)[0]
-    return model
+
+    test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+    test_dataset = test_dataset.batch(batch_size=1)
+
+    prediction = model.predict(test_dataset)
+    if task == 1:
+        prediction_df = pd.DataFrame(prediction, columns=y_train_df.columns[1:11])
+        y_test_df = pd.DataFrame(y_test, columns=y_train_df.columns[1:11])
+        roc_auc = [metrics.roc_auc_score(y_test_df[entry], prediction_df[entry]) for entry in
+                   y_train_df.columns[1:11]]
+        score = np.mean(roc_auc)
+    if task == 2:
+        prediction_df = pd.DataFrame(prediction, columns=[y_train_df.columns[11]])
+        y_test_df = pd.DataFrame(y_test, columns=[y_train_df.columns[11]])
+        score = metrics.roc_auc_score(y_test_df['LABEL_Sepsis'], prediction_df['LABEL_Sepsis'])
+    if task == 3:
+        prediction_df = pd.DataFrame(prediction, columns=y_train_df.columns[12:])
+        y_test_df = pd.DataFrame(y_test, columns=y_train_df.columns[12:])
+        score = np.mean([0.5 + 0.5 * np.maximum(0, metrics.r2_score(y_test_df[entry], prediction_df[entry])) for entry in y_test_df.columns][12:])
+
+    return model, score
