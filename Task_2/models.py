@@ -5,7 +5,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras import backend as K
 
-def threelayers(input_shape, loss, output_layer):
+def threelayers(input_shape, loss, output_layer, task):
     model = keras.Sequential()
 
     model.add(keras.layers.BatchNormalization(axis=-1))
@@ -30,12 +30,21 @@ def threelayers(input_shape, loss, output_layer):
     model.add(keras.layers.Dropout(rate=0.3))
     model.add(keras.layers.BatchNormalization(scale=False))
     model.add(keras.layers.Flatten())
-    # Add output layer
-    model.add(keras.layers.Dense(10, activation=output_layer))
-    # Define optimizer
-    model.compile(optimizer='adagrad',
-                  loss=loss,
-                  metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+    if task == 1:
+        # Add output layer
+        model.add(keras.layers.Dense(10, activation=output_layer))
+        model.compile(optimizer='adagrad',
+                      loss=loss,
+                      metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+    if task == 2:
+        model.add(keras.layers.Dense(1, activation=output_layer))
+        model.compile(optimizer='adagrad', loss='binary_crossentropy', metrics=['sparse_categorical_accuracy'])
+    if task == 3:
+        model.add(keras.layers.Dense(4, activation=output_layer))
+        model.compile(optimizer='adagrad',
+                      loss=loss,
+                      metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+
     return model
 
 def build_model(hp):

@@ -54,7 +54,7 @@ def impute_NN(df):
     imputed_df.reindex(columns = df.columns)
     return imputed_df
 
-def train_model(params, input_shape, x_train, y_train, loss, epochs, seed):
+def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task):
     """
     Splitting the dataset into train 60%, val 30% and test 10%
     """
@@ -86,7 +86,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed):
     callbacks = [CB_es, CB_lr]
     if params['keras_tuner'] == 'False':
         if params['model'] == 'threelayers':
-            model = models.threelayers(input_shape, loss, params['output_layer'])
+            model = models.threelayers(input_shape, loss, params['output_layer'], task)
         elif params['model'] == 'svm':
             model = models.svm(input_shape, loss, params['output_layer'])
         model.fit(train_dataset, validation_data=val_dataset, epochs=epochs, steps_per_epoch=len(x_train) // params['batch_size'],

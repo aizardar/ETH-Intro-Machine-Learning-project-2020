@@ -28,7 +28,7 @@ Questions:
 test = False
 seed = 10
 num_subjects = -1         #number of subjects out of 18995
-epochs = 1000
+epochs = 1
 TRIALS = 50
 
 search_space_dict = {
@@ -38,19 +38,21 @@ search_space_dict = {
     'output_layer': ['sigmoid'],
     'model': ['threelayers'],
     'batch_size': [2048],
-    'impute_nn': ['yes', 'no']
-}
-test = True
-search_space_dict = {
-    'loss': ['binary_crossentropy'],
-    'nan_handling': ['minusone'],
-    'standardizer': ['none'],
-    'output_layer': ['sigmoid'],
-    'model': ['threelayers'],
+    'impute_nn': ['yes', 'no'],
     'keras_tuner': ['False'],
-    'batch_size': [2048],
-    'impute_nn': ['yes', 'no']
+    'epochs': [epochs],
 }
+# test = True
+# search_space_dict = {
+#     'loss': ['binary_crossentropy'],
+#     'nan_handling': ['minusone'],
+#     'standardizer': ['none'],
+#     'output_layer': ['sigmoid'],
+#     'model': ['threelayers'],
+#     'keras_tuner': ['False'],
+#     'batch_size': [2048],
+#     'impute_nn': ['yes', 'no']
+# }
 
 if not os.path.isfile('temp/params_results.csv'):
     columns = [key for key in search_space_dict.keys()]
@@ -67,7 +69,6 @@ y_train_df = pd.read_csv('train_labels.csv').sort_values(by='pid')
 # y_train_df = y_train_df.iloc[:num_subjects, :10 + 1]
 y_test_df = pd.read_csv('sample.csv').sort_values(by='pid')
 # y_test_df = y_test_df.iloc[:num_subjects, :10 + 1]
-
 
 X_train_df = pd.read_csv('train_features.csv').sort_values(by='pid')
 X_train_df = X_train_df.loc[X_train_df['pid'] < y_train_df['pid'].values[-1] + 1]
@@ -117,17 +118,17 @@ def test_model(params, X_train_df, y_train_df, X_test_df, y_test_df, params_resu
         x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
     input_shape = x_train[0].shape
     y_train1 = list(y_train_df.values[:, 1:11])
-    y_train2 = list(y_train_df.values[:, 12])
-    y_train3 = list(y_train_df.values[:, 13:])
+    y_train2 = list(y_train_df.values[:, 11])
+    y_train3 = list(y_train_df.values[:, 12:])
     x_test = []
     for i, subject in enumerate(list(dict.fromkeys(x_test_df['pid'].values.tolist()))):
         if X_test_df.loc[X_test_df['pid'] == subject].values[:, 1:].shape[0] > 12:
             raise Exception('more than 12 time-points')
         x_test.append(X_test_df.loc[X_test_df['pid'] == subject].values[:, 1:])
 
-    model1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed)
-    model2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed)
-    model3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed)
+    model1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, task = 1)
+    model2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, task = 2)
+    model3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, task = 3)
 
     test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
     test_dataset = test_dataset.batch(batch_size=1)
@@ -135,9 +136,9 @@ def test_model(params, X_train_df, y_train_df, X_test_df, y_test_df, params_resu
     prediction1 = model1.predict(test_dataset)
     prediction2 = model2.predict(test_dataset)
     prediction3 = model3.predict(test_dataset)
-    prediction_df = pd.DataFrame(prediction1, columns= y_train_df.columns[1:])
-    prediction_df = prediction_df.append(pd.DataFrame(prediction2, columns = y_train_df.columns[12]), sort = True)
-    prediction_df = prediction_df.append(pd.DataFrame(prediction3, columns = y_train_df.columns[13:]), sort = True)
+    prediction_df = pd.DataFrame(prediction1, columns= y_train_df.columns[1:11])
+    prediction_df = prediction_df.append(pd.DataFrame(prediction2, columns = y_train_df.columns[11]))
+    prediction_df = prediction_df.append(pd.DataFrame(prediction3, columns = y_train_df.columns[12:]))
 
     # y_test_df = pd.DataFrame(y_test, columns= y_train_df.columns[1:])
     # y_test_df.to_csv('temp/ytrue.csv')
