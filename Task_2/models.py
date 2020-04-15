@@ -42,8 +42,8 @@ def threelayers(input_shape, loss, output_layer, task):
     if task == 3:
         model.add(keras.layers.Dense(4, activation='linear'))
         model.compile(optimizer='adagrad',
-                      loss=loss,
-                      metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+                      loss='mean_squared_error',
+                      metrics=[dice_coef, 'mse'])
 
     return model
 

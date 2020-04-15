@@ -56,7 +56,7 @@ search_space_dict = {
 
 if not os.path.isfile('temp/params_results.csv'):
     columns = [key for key in search_space_dict.keys()]
-    columns.append('roc_auc')
+    columns.append('score')
     params_results_df = pd.DataFrame(columns=columns)
 else:
     params_results_df = pd.read_csv('temp/params_results.csv')
@@ -124,15 +124,17 @@ def test_model(params, X_train_df, y_train_df, final_df, params_results_df):
             raise Exception('more than 12 time-points')
         x_final.append(final_df.loc[final_df['pid'] == subject].values[:, 1:])
 
+    print('\n\n**** Training model1 **** \n\n')
     model1, score1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed,1, y_train_df)
+    print('\n\n**** Training model2 **** \n\n')
     model2, score2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed,2, y_train_df)
+    print('\n\n**** Training model3 **** \n\n')
     model3, score3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed,3, y_train_df)
 
     final_dataset = tf.data.Dataset.from_tensor_slices(x_final)
     final_dataset = final_dataset.batch(batch_size=1)
-
+    sample = pd.read_csv('sample.csv', index_col='pid')
     if not os.path.isfile('final.csv'):
-        sample = pd.read_csv('sample.csv', index_col='pid')
         prediction1 = model1.predict(final_dataset)
         prediction2 = model2.predict(final_dataset)
         prediction3 = model3.predict(final_dataset)
@@ -144,31 +146,34 @@ def test_model(params, X_train_df, y_train_df, final_df, params_results_df):
         prediction_df.to_csv('final.csv')
     else:
         final_df = pd.read_csv('final.csv', index_col='pid')
-        if score1 > np.max(params_results_df['task1'].values.to_list()):
-            prediction1 = model1.predict(final_dataset)
-            prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:11])
-            for col in prediction_df.columns:
-                final_df[col] = prediction_df[col]
-            final_df.to_csv('final.csv')
-        if score2 > np.max(params_results_df['task2'].values.to_list()):
-            prediction2 = model1.predict(final_dataset)
-            prediction_df = pd.DataFrame(prediction2, columns=y_train_df.columns[11])
-            for col in prediction_df.columns:
-                final_df[col] = prediction_df[col]
-            final_df.to_csv('final.csv')
-        if score3 > np.max(params_results_df['task3'].values.to_list()):
-            prediction3 = model1.predict(final_dataset)
-            prediction_df = pd.DataFrame(prediction3, columns=y_train_df.columns[12:])
-            for col in prediction_df.columns:
-                final_df[col] = prediction_df[col]
-            final_df.to_csv('final.csv')
-
+        if not params_results_df.empty:
+            if score1 > np.max(params_results_df['task1'].values.tolist()):
+                prediction1 = model1.predict(final_dataset)
+                prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:11])
+                for col in prediction_df.columns:
+                    final_df[col] = prediction_df[col]
+                final_df.reindex(columns=sample.columns)
+                final_df.to_csv('final.csv')
+            if score2 > np.max(params_results_df['task2'].values.tolist()):
+                prediction2 = model2.predict(final_dataset)
+                prediction_df = pd.DataFrame(prediction2, columns=y_train_df.columns[11])
+                for col in prediction_df.columns:
+                    final_df[col] = prediction_df[col]
+                final_df.reindex(columns=sample.columns)
+                final_df.to_csv('final.csv')
+            if score3 > np.max(params_results_df['task3'].values.tolist()):
+                prediction3 = model3.predict(final_dataset)
+                prediction_df = pd.DataFrame(prediction3, columns=y_train_df.columns[12:])
+                for col in prediction_df.columns:
+                    final_df[col] = prediction_df[col]
+                final_df.reindex(columns=sample.columns)
+                final_df.to_csv('final.csv')
+        print('scores: ', score1, score2, score3)
     return score1, score2, score3, np.mean([score1, score2, score3])
 
 
 for params in tqdm(search_space):
-    a = params_results_df.loc[(), 'roc_auc']
-    temp_df = params_results_df.loc[functools.reduce(operator.and_, (params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in search_space_dict.keys())), 'roc_auc']
+    temp_df = params_results_df.loc[functools.reduce(operator.and_, (params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in search_space_dict.keys())), 'score']
     not_tested = temp_df.empty or temp_df.isna().all()
     if not_tested or test == True:
         if params['impute_nn'] == 'yes':
