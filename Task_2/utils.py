@@ -70,11 +70,16 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
     """
     if not params['standardizer'] == 'none':
         scaler = get_scaler(params)
-        print(x_train.shape)
-        scaler.fit(np.squeeze(x_train))
-        x_train = scaler.transform(np.squeeze(x_train))
-        x_val = scaler.transform(np.squeeze(x_val))
-        x_test = scaler.transform(np.squeeze(x_test))
+        scaler.fit(np.concatenate(x_train)[:,1:])
+        temp_train = np.concatenate(x_train)
+        temp_train[:,1:] = scaler.transform(np.concatenate(x_train)[:,1:])
+        x_train = np.vsplit(temp_train, temp_train.shape[0]/12)
+        temp_val = np.concatenate(x_val)
+        temp_val[:,1:] = scaler.transform(np.concatenate(x_val)[:,1:])
+        x_val = np.vsplit(temp_val, temp_val.shape[0]/12)
+        temp_test = np.concatenate(x_test)
+        temp_test[:,1:] = scaler.transform(np.concatenate(x_test)[:,1:])
+        x_test = np.vsplit(temp_test, temp_test.shape[0]/12)
     else:
         scaler = None
 

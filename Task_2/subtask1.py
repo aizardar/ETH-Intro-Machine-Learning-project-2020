@@ -34,7 +34,7 @@ TRIALS = 50
 search_space_dict = {
     'loss': ['dice','binary_crossentropy'],
     'nan_handling': ['minusone'],
-    'standardizer': ['none'],
+    'standardizer': ['RobustScaler'],
     'output_layer': ['sigmoid'],
     'model': ['threelayers'],
     'batch_size': [2048],
