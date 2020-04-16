@@ -27,7 +27,7 @@ Questions:
 """
 test = False
 seed = 10
-num_subjects = -1         #number of subjects out of 18995
+num_subjects = 500         #number of subjects out of 18995
 epochs = 1000
 TRIALS = 50
 
@@ -42,17 +42,17 @@ search_space_dict = {
     'keras_tuner': ['False'],
     'epochs': [epochs],
 }
-# test = True
-# search_space_dict = {
-#     'loss': ['binary_crossentropy'],
-#     'nan_handling': ['minusone'],
-#     'standardizer': ['none'],
-#     'output_layer': ['sigmoid'],
-#     'model': ['threelayers'],
-#     'keras_tuner': ['False'],
-#     'batch_size': [2048],
-#     'impute_nn': ['yes', 'no']
-# }
+test = True
+search_space_dict = {
+    'loss': ['binary_crossentropy'],
+    'nan_handling': ['minusone'],
+    'standardizer': ['RobustScaler'],
+    'output_layer': ['sigmoid'],
+    'model': ['threelayers'],
+    'impute_nn': ['no'],
+    'keras_tuner': ['False'],
+    'batch_size': [2048],
+}
 
 if not os.path.isfile('temp/params_results.csv'):
     columns = [key for key in search_space_dict.keys()]
@@ -94,20 +94,8 @@ def test_model(params, X_train_df, y_train_df, final_df, params_results_df):
     if loss == 'dice':
         loss = dice_coef_loss
 
-    """
-    Scaling data
-    """
-    if not params['standardizer'] == 'none':
-        scaler = utils.scaler(params)
-        x_train_df = pd.DataFrame(data = scaler.fit_transform(X_train_df.values[:, 1:]), columns = X_train_df.columns[1:])
-        x_train_df.insert(0, 'pid', X_train_df['pid'].values)
-    else:
-        x_train_df = X_train_df
-        x_final_df = final_df
-    # x_train_df.to_csv('temp/taining_data.csv')
-
     x_train = []
-    for i, subject in enumerate(list(dict.fromkeys(x_train_df['pid'].values.tolist()))):
+    for i, subject in enumerate(list(dict.fromkeys(X_train_df['pid'].values.tolist()))):
         if X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:].shape[0] > 12:
             raise Exception('more than 12 time-points')
         if subject in list(dict.fromkeys(y_train_df['pid'].values.tolist())):
@@ -125,12 +113,13 @@ def test_model(params, X_train_df, y_train_df, final_df, params_results_df):
         x_final.append(final_df.loc[final_df['pid'] == subject].values[:, 1:])
 
     print('\n\n**** Training model1 **** \n\n')
-    model1, score1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed,1, y_train_df)
+    model1, score1, scaler1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed,1, y_train_df)
     print('\n\n**** Training model2 **** \n\n')
-    model2, score2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed,2, y_train_df)
+    model2, score2, scaler2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed,2, y_train_df)
     print('\n\n**** Training model3 **** \n\n')
-    model3, score3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed,3, y_train_df)
+    model3, score3, scaler3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed,3, y_train_df)
 
+    x_final = scaler3.transform(x_final)
     final_dataset = tf.data.Dataset.from_tensor_slices(x_final)
     final_dataset = final_dataset.batch(batch_size=1)
     sample = pd.read_csv('sample.csv', index_col='pid')
@@ -160,14 +149,14 @@ def test_model(params, X_train_df, y_train_df, final_df, params_results_df):
                 for col in prediction_df.columns:
                     final_df[col] = prediction_df[col]
                 final_df.reindex(columns=sample.columns)
-                final_df.to_csv('final.csv')
+                final_df.to_csv('final.csv', index = False)
             if score3 > np.max(params_results_df['task3'].values.tolist()):
                 prediction3 = model3.predict(final_dataset)
                 prediction_df = pd.DataFrame(prediction3, columns=y_train_df.columns[12:])
                 for col in prediction_df.columns:
                     final_df[col] = prediction_df[col]
                 final_df.reindex(columns=sample.columns)
-                final_df.to_csv('final.csv')
+                final_df.to_csv('final.csv', index = False)
         print('scores: ', score1, score2, score3)
     return score1, score2, score3, np.mean([score1, score2, score3])
 

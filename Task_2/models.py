@@ -38,7 +38,7 @@ def threelayers(input_shape, loss, output_layer, task):
                       metrics=[dice_coef, 'mse', keras.metrics.AUC()])
     if task == 2:
         model.add(keras.layers.Dense(1, activation=output_layer))
-        model.compile(optimizer='adagrad', loss='binary_crossentropy', metrics=['sparse_categorical_accuracy'])
+        model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
     if task == 3:
         model.add(keras.layers.Dense(4, activation='linear'))
         model.compile(optimizer='adagrad',
@@ -46,6 +46,7 @@ def threelayers(input_shape, loss, output_layer, task):
                       metrics=[dice_coef, 'mse'])
 
     return model
+
 
 def build_model(hp):
     model = keras.Sequential()
@@ -109,7 +110,6 @@ def dice_coef(y_true, y_pred, smooth=1):
 
 def dice_coef_loss(y_true, y_pred):
     return 1-dice_coef(y_true, y_pred)
-
 
 
 

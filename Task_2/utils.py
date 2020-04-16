@@ -32,7 +32,7 @@ def handle_nans(X_train_df, params, seed):
         X_train_df = pd.DataFrame(data = imp.transform(X_train_df), columns = X_train_df.columns)
     return X_train_df
 
-def scaler(params):
+def get_scaler(params):
     if params['standardizer'] == 'RobustScaler':
         scaler = preprocessing.RobustScaler()
     elif params['standardizer'] == 'minmax':
@@ -64,6 +64,20 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
     """
     x_train, x_valtest, y_train, y_valtest = train_test_split(x_train, y_train, test_size=0.4, random_state=seed)
     x_val, x_test, y_val, y_test = train_test_split(x_valtest, y_valtest, test_size=0.3, random_state=seed)
+
+    """
+    Scaling data
+    """
+    if not params['standardizer'] == 'none':
+        scaler = get_scaler(params)
+        print(x_train.shape)
+        scaler.fit(np.squeeze(x_train))
+        x_train = scaler.transform(np.squeeze(x_train))
+        x_val = scaler.transform(np.squeeze(x_val))
+        x_test = scaler.transform(np.squeeze(x_test))
+    else:
+        scaler = None
+
     """
     Making datasets
     """
@@ -123,6 +137,6 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
     if task == 3:
         prediction_df = pd.DataFrame(prediction, columns=y_train_df.columns[12:])
         y_test_df = pd.DataFrame(y_test, columns=y_train_df.columns[12:])
-        score = np.mean([0.5 + 0.5 * np.maximum(0, metrics.r2_score(y_test_df[entry], prediction_df[entry])) for entry in y_test_df.columns][12:])
+        score = np.mean([0.5 + 0.5 * np.maximum(0, metrics.r2_score(y_test_df[entry], prediction_df[entry])) for entry in y_train_df.columns[12:]])
 
-    return model, score
+    return model, score, scaler
