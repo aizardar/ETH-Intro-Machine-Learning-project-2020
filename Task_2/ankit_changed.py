@@ -387,24 +387,30 @@ class Net(LightningModule):
         super(Net, self).__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
-        kernel_size1 = trial.suggest_int('kernel_size1', 2, 12)
-        kernel_size2 = trial.suggest_int('kernel_size2', 2, 35)
-        self.network = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 64, kernel_size= (kernel_size1, kernel_size2), stride=1, padding=0),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.MaxPool2d((2, 1)),
-            Flatten(),
-            torch.nn.Linear(11200, 50),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(50, 4)
-        )
+        kernel_size1 = trial.suggest_int('kernel_size1', 2, 7)
+        kernel_size2 = trial.suggest_int('kernel_size2', 2, 16)
+        num_params = ((12 - kernel_size1 + 1) // 2) * ((35 - kernel_size2 + 1) // 2) * 64
+        self.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(kernel_size1, kernel_size2), stride=1, padding=0)
+        self.relu1 = torch.nn.ReLU(inplace=True)
+        self.pool = torch.nn.MaxPool2d((2, 2), stride = 2)
+        self.flatten = Flatten()
+        self.linear = torch.nn.Linear(num_params, 50)
+        self.relu2 = torch.nn.ReLU(inplace=True)
+        self.output = torch.nn.Linear(50, 4)
+
         self.r2_score1 = R2Score()
         self.r2_score2 = R2Score()
         self.r2_score3 = R2Score()
         self.r2_score4 = R2Score()
 
     def forward(self, x):
-        return self.network(x)
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.pool(x)
+        x = self.flatten(x)
+        x = self.linear(x)
+        x = self.relu2(x)
+        return self.output(x)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=2048, num_workers=16)
@@ -426,10 +432,10 @@ class Net(LightningModule):
         data, target = batch
         output = self.forward(data)
         loss = self.mse(output, target)
-        self.r2_score1.update((output[:, 0], target[:, 0]))
-        self.r2_score2.update((output[:, 1], target[:, 1]))
-        self.r2_score3.update((output[:, 2], target[:, 2]))
-        self.r2_score4.update((output[:, 3], target[:, 3]))
+        self.r2_score1._update((output[:, 0], target[:, 0]))
+        self.r2_score2._update((output[:, 1], target[:, 1]))
+        self.r2_score3._update((output[:, 2], target[:, 2]))
+        self.r2_score4._update((output[:, 3], target[:, 3]))
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
@@ -447,79 +453,18 @@ class Net(LightningModule):
         tensorboard_logs = {'val_loss': avg_loss, 'val_r2_score1': avg_r2_score1, 'val_r2_score2': avg_r2_score2,
                             'val_r2_score3': avg_r2_score3, 'val_r2_score4': avg_r2_score4, 'avg_r2': avg_r2, }
         print(avg_r2)
+        self.val_r2_score = avg_r2
         return {'val_loss': avg_loss, 'val_r2_score': avg_r2, 'log': tensorboard_logs}
 
     def mse(self, logits, labels):
         return torch.nn.functional.mse_loss(logits, labels)
 
-#%%
-# import pytorch_lightning as pl
-# from pytorch_lightning.logging import LightningLoggerBase
-# import optuna
-# from optuna.integration import PyTorchLightningPruningCallback
-#
-# 
-# if not os.path.exists('optunaaa'):
-#     os.mkdir('optunaaa')
-#
-# EPOCHS = 100
-# DIR = 'optunaaa'
-# MODEL_DIR = os.path.join(DIR, "result")
-#
-# def objective(trial):
-#     # PyTorch Lightning will try to restore model parameters from previous trials if checkpoint
-#     # filenames match. Therefore, the filenames for each trial must be made unique.
-#     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-#         os.path.join(MODEL_DIR, "trial_{}".format(trial.number)), monitor="val_r2_score"
-#     )
-#
-#     # The default logger in PyTorch Lightning writes to event files to be consumed by
-#     # TensorBoard. We create a simple logger instead that holds the log in memory so that the
-#     # final accuracy can be obtained after optimization. When using the default logger, the
-#     # final accuracy could be stored in an attribute of the `Trainer` instead.
-#     logger = DictLogger(trial.number)
-#
-#     trainer = pl.Trainer(
-#         logger=logger,
-#         checkpoint_callback=checkpoint_callback,
-#         max_epochs=EPOCHS,
-#         gpus=0 if torch.cuda.is_available() else None,
-#         early_stop_callback= PyTorchLightningPruningCallback(trial, monitor="val_r2_score"),
-#     )
-#     model = Net(trial)
-#     trainer.fit(model)
-#     return logger.metrics[-1]["val_r2_score"]
-#
-# class DictLogger(LightningLoggerBase):
-#     """PyTorch Lightning `dict` logger."""
-#
-#     def __init__(self, version):
-#         super(DictLogger, self).__init__()
-#         self.metrics = []
-#         self._version = version
-#
-#     def log_metrics(self, metric, step=None):
-#         self.metrics.append(metric)
-#
-#     @property
-#     def version(self):
-#         return self._version
-#
-# pruner = optuna.pruners.MedianPruner()
-#
-# study = optuna.create_study(direction="maximize", pruner=pruner)
-# study.optimize(objective, n_trials=100, timeout=600)
-#
-# print("Number of finished trials: {}".format(len(study.trials)))
-#
-# print("Best trial:")
-# trial = study.best_trial
-#
-# print("  Value: {}".format(trial.value))
-#
-# print("  Params: ")
-# for key, value in trial.params.items():
-#     print("    {}: {}".format(key, value))
+    def get(self, item):
+        return self.__dict__[item]
+
+
+# %%
+
 
 # %% Task3 with multiple output CNN
 """
@@ -561,11 +506,104 @@ x_train, x_val, y_train, y_val = train_test_split(x_train, train_labels_task3, t
 train_dataset = MyDataset(x_train, y_train)
 val_dataset = MyDataset(x_val, y_val)
 personal_test_dataset = testDataset(x_personal_test)
-logger = TensorBoardLogger("tb_logs", name="task3")
-checkpoint_callback = ModelCheckpoint(filepath='temp/', verbose=True)
-model = Net(train_dataset, val_dataset)
-trainer = Trainer(checkpoint_callback=checkpoint_callback, logger=logger, profiler=True)
-trainer.fit(model)
+
+# %%
+import pytorch_lightning as pl
+from pytorch_lightning.logging import LightningLoggerBase
+import optuna
+from optuna.integration import PyTorchLightningPruningCallback
+import pkg_resources
+
+if pkg_resources.parse_version(pl.__version__) < pkg_resources.parse_version("0.6.0"):
+    raise RuntimeError("PyTorch Lightning>=0.6.0 is required for this example.")
+
+class DictLogger(LightningLoggerBase):
+    """PyTorch Lightning `dict` logger."""
+
+    def __init__(self, version):
+        super(DictLogger, self).__init__()
+        self.metrics = []
+        self._version = version
+
+    def log_metrics(self, metrics, step=None):
+        self.metrics.append(metrics)
+
+    @property
+    def version(self):
+        return self._version
+
+    @property
+    def experiment(self):
+        """Return the experiment object associated with this logger."""
+
+    def log_hyperparams(self, params):
+        """
+        Record hyperparameters.
+
+        Args:
+            params: :class:`~argparse.Namespace` containing the hyperparameters
+        """
+
+    @property
+    def name(self):
+        """Return the experiment name."""
+        return 'optuunaaa'
+
+
+if not os.path.exists('optunaaa'):
+    os.mkdir('optunaaa')
+
+EPOCHS = 100
+DIR = 'optunaaa'
+MODEL_DIR = os.path.join(DIR, "result")
+
+
+def objective(trial):
+    # PyTorch Lightning will try to restore model parameters from previous trials if checkpoint
+    # filenames match. Therefore, the filenames for each trial must be made unique.
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        os.path.join(MODEL_DIR, "trial_{}".format(trial.number)), monitor="val_r2_score"
+    )
+
+    # The default logger in PyTorch Lightning writes to event files to be consumed by
+    # TensorBoard. We create a simple logger instead that holds the log in memory so that the
+    # final accuracy can be obtained after optimization. When using the default logger, the
+    # final accuracy could be stored in an attribute of the `Trainer` instead.
+    logger = DictLogger(trial.number)
+
+    trainer = pl.Trainer(
+        logger=logger,
+        checkpoint_callback=checkpoint_callback,
+        max_epochs=EPOCHS,
+        gpus=0 if torch.cuda.is_available() else None,
+        early_stop_callback=PyTorchLightningPruningCallback(trial, monitor="val_r2_score"),
+    )
+    model = Net(train_dataset, val_dataset, trial)
+    trainer.fit(model)
+    return logger.metrics[-1]["val_r2_score"]
+
+
+pruner = optuna.pruners.MedianPruner()
+
+study = optuna.create_study(direction="maximize", pruner=pruner)
+study.optimize(objective, n_trials=100, timeout=600)
+
+print("Number of finished trials: {}".format(len(study.trials)))
+
+print("Best trial:")
+trial = study.best_trial
+
+print("  Value: {}".format(trial.value))
+
+print("  Params: ")
+for key, value in trial.params.items():
+    print("    {}: {}".format(key, value))
+# %%
+# logger = TensorBoardLogger("tb_logs", name="task3")
+# checkpoint_callback = ModelCheckpoint(filepath='temp/', verbose=True)
+# model = Net(train_dataset, val_dataset)
+# trainer = Trainer(checkpoint_callback=checkpoint_callback, logger=logger, profiler=True)
+# trainer.fit(model)
 
 p_test_prediction_task3 = []
 for a, b in zip(x_personal_test_3, list(y_personal_test.values[:, 12:])):
