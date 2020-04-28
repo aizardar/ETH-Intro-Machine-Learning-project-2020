@@ -5,6 +5,40 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras import backend as K
 
+def threelayers_task1(input_shape, loss, output_layer, task):
+    model = keras.Sequential()
+
+    model.add(keras.layers.BatchNormalization(axis=-1))
+    # Define first fully connected layer
+    model.add(keras.layers.Dense(400,
+                                 input_shape=input_shape,
+                                 activation=tf.nn.relu,
+                                 kernel_initializer='he_normal',
+                                 kernel_regularizer=keras.regularizers.l2(l=1e-3)))
+
+    # Add dropout for overfitting avoidance and batch normalization layer
+    model.add(keras.layers.Dropout(rate=0.3))
+    model.add(keras.layers.BatchNormalization(scale=False))
+
+    # Add second fully connected layer
+    model.add(keras.layers.Dense(250,
+                                 activation=tf.nn.relu,
+                                 kernel_initializer='he_normal',
+                                 kernel_regularizer=keras.regularizers.l2(l=1e-3)))
+
+    # Add dropout for overfitting avoidance and batch normalization layer
+    model.add(keras.layers.Dropout(rate=0.3))
+    model.add(keras.layers.BatchNormalization(scale=False))
+    model.add(keras.layers.Flatten())
+    # Add output layer
+    model.add(keras.layers.Dense(11, activation=output_layer))
+    model.compile(optimizer='adagrad',
+                  loss=loss,
+                  metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+
+
+    return model
+
 def threelayers(input_shape, loss, output_layer, task):
     model = keras.Sequential()
 
@@ -40,10 +74,10 @@ def threelayers(input_shape, loss, output_layer, task):
         model.add(keras.layers.Dense(1, activation=output_layer))
         model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
     if task == 3:
-        model.add(keras.layers.Dense(4, activation='linear'))
+        model.add(keras.layers.Dense(4, activation=output_layer))
         model.compile(optimizer='adagrad',
-                      loss='mean_squared_error',
-                      metrics=[dice_coef, 'mse'])
+                      loss=loss,
+                      metrics=['mse'])
 
     return model
 
@@ -72,7 +106,7 @@ def build_model(hp):
         optimizer=keras.optimizers.Adadelta(
             hp.Choice('learning_rate', [1.0])),
         loss='binary_crossentropy',
-        metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+        metrics=[dice_coef, 'mse', keras.metrics.AUC(),])
     return model
 
 def svm(input_shape, loss, output_layer):
