@@ -1,0 +1,7 @@
+In this version, data imputation was done usign k-neighbours and mode. 
+New features were extracted from the time series of each patient. 
+
+For task 1 and 2, RandomForestClassifier gave better auc score than SVC.
+
+For task 3, again RandomForestRegressor was found to give better r2 score than linear regressor except for LABEL_SaO2. 
+
