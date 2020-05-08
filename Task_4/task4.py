@@ -9,18 +9,33 @@ from skimage.io import imread
 from skimage.transform import resize
 from matplotlib import pyplot as plt
 import tensorflow as tf
+from sklearn.utils import shuffle
 
 batch_size = 128
+file = 'train_triplets.txt'
 
-df = pd.read_csv(os.path.expanduser('train_triplets.txt'), sep=' ', names=['A', 'B', 'C'],
+df = pd.read_csv(file, sep=' ', names=['A', 'B', 'C'],
                  dtype='str')
 df['label'] = 1
-for index, row in df.iterrows():
-    if index % 2 == 0:
-        row['B'], row['C'] = row['C'], row['B']
-        row['label'] = 0
-        df.iloc[index] = row
 
+df_ = pd.read_csv(file, sep=' ', names=['B', 'A', 'C'],
+                  dtype='str')
+df_['label'] = 1
+
+df = df.append(df_)
+
+df_ = pd.read_csv(file, sep=' ', names=['A', 'C', 'B'],
+                  dtype='str')
+df_['label'] = 0
+
+df = df.append(df_)
+
+df_ = pd.read_csv(file, sep=' ', names=['B', 'C', 'A'],
+                  dtype='str')
+df_['label'] = 0
+
+df = df.append(df_)
+df = shuffle(df)
 train_df, test_df = train_test_split(df, test_size=0.2)
 train_df, val_df = train_test_split(train_df, test_size=0.2)
 
