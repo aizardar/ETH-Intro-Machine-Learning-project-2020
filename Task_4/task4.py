@@ -36,8 +36,8 @@ df_['label'] = 0
 
 df = df.append(df_)
 df = shuffle(df)
-train_df, test_df = train_test_split(df, test_size=0.2)
-train_df, val_df = train_test_split(train_df, test_size=0.2)
+train_df, test_df = train_test_split(df, test_size=0.2, shuffle=True)
+train_df, val_df = train_test_split(train_df, test_size=0.2, shuffle=True)
 
 input_shape = (128, 128)
 
@@ -159,9 +159,13 @@ def head(x):
     return x
 
 
-a = head(inputa)
-b = head(inputb)
-c = head(inputc)
+# a = head(inputa)
+# b = head(inputb)
+# c = head(inputc)
+
+a = inputa
+b = inputb
+c = inputc
 
 x = concatenate([a, b, c])
 x = Flatten()(x)
@@ -179,8 +183,11 @@ model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']
 
 early_stopper = EarlyStopping(monitor='val_loss', patience=10)
 checkpoint = ModelCheckpoint('models/', save_best_only=True)
+logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
+                                        histogram_freq=1,
+                                        profile_batch='500,520')
 
 model.fit(train_dataset, validation_data=val_dataset, epochs=100,
-          steps_per_epoch=len(train_df) // batch_size,
-          validation_steps=len(val_df) // batch_size, shuffle=True)
+          steps_per_epoch=len(train_df) // batch_size // 4,
+          validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint, logger])
 model.evaluate_generator(val_dataset, verbose=1)
