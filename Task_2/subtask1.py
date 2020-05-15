@@ -1,21 +1,17 @@
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras.losses import Huber
 import models
-from models import simple_model, threelayers
 import numpy as np
 from sklearn.model_selection import train_test_split, ParameterGrid
-from sklearn import preprocessing, svm
 from matplotlib import pyplot as plt
 import sklearn.metrics as metrics
 import os
 import utils
 import functools, operator
-from models import dice_coef_loss, build_model
+from models import dice_coef_loss
 from tqdm import tqdm
 import random
-from scipy.spatial.distance import dice
-from score_submission import get_score
+import score_submission
 
 """
 Predict whether medical tests are ordered by a clinician in the remainder of the hospital stay: 0 means that there will be no further tests of this kind ordered, 1 means that at least one of a test of that kind will be ordered. In the submission file, you are asked to submit predictions in the interval [0, 1], i.e., the predictions are not restricted to binary. 0.0 indicates you are certain this test will not be ordered, 1.0 indicates you are sure it will be ordered. The corresponding columns containing the binary groundtruth in train_labels.csv are: LABEL_BaseExcess, LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2, LABEL_Bilirubin_direct, LABEL_EtCO2.
@@ -32,11 +28,11 @@ test = False
 seed = 1
 num_subjects = -1  # number of subjects out of 18995
 epochs = 1000
-TRIALS = 50
+tuner_trials = 10
 # Todo collapse persons over time to find outlayers?
 
 search_space_dict_task1 = {
-    'nan_handling': ['minusone'],
+    'nan_handling': ['minusone', 'iterative'],
     'standardizer': ['RobustScaler'],
     'model': ['threelayers'],
     'batch_size': [2048],
@@ -48,8 +44,26 @@ search_space_dict_task1 = {
     'task1_activation': ['sigmoid'],
     'task1_loss': ['dice'],
     'with_time': ['no'],
-    'collapse_time': ['yes'],
+    'collapse_time': ['no'],
+    'tuner_trials': [tuner_trials],
 }
+search_space_dict_task12 = {
+    'nan_handling': ['minusone', 'iterative'],
+    'standardizer': ['RobustScaler', 'minmax'],
+    'model': ['dense_model'],
+    'batch_size': [2048],
+    'impute_nn': ['yes'],
+    'epochs': [epochs],
+    'numbr_subjects': [num_subjects],
+    'keras_tuner': ['yes'],
+    'task': [12],
+    'task12_activation': ['sigmoid'],
+    'task1_loss': ['dice'],
+    'with_time': ['no', 'yes'],
+    'collapse_time': ['no'],
+    'tuner_trials': [tuner_trials],
+}
+
 search_space_dict_task2 = {
     # 'loss': ['dice','binary_crossentropy'],
     'nan_handling': ['minusone'],
@@ -58,27 +72,32 @@ search_space_dict_task2 = {
     'model': ['threelayers'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
-    'keras_tuner': ['no'],
+    'keras_tuner': ['yes'],
     'epochs': [epochs],
     'numbr_subjects': [num_subjects],
     'task': [2],
     'task2_activation': ['sigmoid'],
     'task2_loss': ['dice'],
     'with_time': ['yes'],
-    'collapse_time': ['yes'],
+    'collapse_time': ['no'],
+    'tuner_trials': [tuner_trials],
 }
+
 search_space_dict_lin = {
-    'nan_handling': ['iterative'],
+    'nan_handling': ['iterative', 'minusone'],
+    'task3_activation': [None],
     'standardizer': ['minmax'],
-    'model': ['lin_reg'],
+    'model': ['dense_model'],
     'batch_size': [2048],
-    'impute_nn': ['no', 'yes'],
+    'impute_nn': ['yes'],
+    'epochs': [epochs],
+    'task3_loss': ['mse', 'huber'],
     'keras_tuner': ['no'],
     'numbr_subjects': [num_subjects],
-    'task3_loss': ['huber'],
     'task': [3],
-    'with_time': ['no'],
-    'collapse_time': ['yes'],
+    'with_time': ['yes', 'no'],
+    'collapse_time': ['no'],
+    'tuner_trials': [tuner_trials],
 }
 
 sample = pd.read_csv('sample.csv')
@@ -89,18 +108,20 @@ y_train_df = pd.read_csv('train_labels.csv').sort_values(by='pid')
 X_train_df = pd.read_csv('train_features.csv').sort_values(by='pid')
 X_final_df = pd.read_csv('test_features.csv')
 
+
 def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     print('\n', params)
     train_path = 'nan_handling/train{}_{}.csv'.format(num_subjects, params['nan_handling'])
-    test_path = 'nan_handling/test{}_{}.csv'.format(num_subjects, params['nan_handling'])
-    if os.path.isfile(train_path) and os.path.isfile(test_path):
+    x_final_path = 'nan_handling/test{}_{}.csv'.format(num_subjects, params['nan_handling'])
+
+    if os.path.isfile(train_path) and os.path.isfile(x_final_path):
         X_train_df = pd.read_csv(train_path)
-        X_final_df = pd.read_csv(test_path)
+        X_final_df = pd.read_csv(x_final_path)
     else:
         X_train_df = utils.handle_nans(X_train_df, params, seed)
         X_train_df.to_csv(train_path, index=False)
         X_final_df = utils.handle_nans(X_final_df, params, seed)
-        X_final_df.to_csv(test_path, index=False)
+        X_final_df.to_csv(x_final_path, index=False)
 
     if params['collapse_time'] == 'yes':
         if params['with_time'] == 'no':
@@ -110,55 +131,72 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
             x_final = X_final_df.groupby('pid').mean().reset_index()
             x_train = X_train_df.groupby('pid').mean().reset_index()
         input_shape = x_train.shape
+
+    y_train_df, y_test_df = train_test_split(y_train_df, test_size=0.2, random_state=seed)
+
     if params['collapse_time'] == 'no':
         x_train = []
-        for i, subject in enumerate(list(dict.fromkeys(X_train_df['pid'].values.tolist()))):
-            if X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:].shape[0] > 12:
-                raise Exception('more than 12 time-points')
-            if subject in list(dict.fromkeys(y_train_df['pid'].values.tolist())):
-                if params['with_time'] == 'yes':
-                    x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
-                elif params['with_time'] == 'no':
-                    x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 2:])
-            else:
-                print(subject, 'not in y_train')
-        input_shape = x_train[0].shape
+        for i, subject in enumerate(list(dict.fromkeys(y_train_df['pid'].values.tolist()))):
+            if params['with_time'] == 'yes':
+                x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
+            elif params['with_time'] == 'no':
+                x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 2:])
 
-    if params['collapse_time'] == 'yes':
-        y_train1 = y_train_df.iloc[:,1:12]
-        y_train2 = y_train_df.iloc[:, 11]
-        y_train3 = y_train_df[:, 12:]
-    else:
-        y_train1 = list(y_train_df.values[:, 1:11])
-        y_train2 = list(y_train_df.values[:, 11])
-        y_train3 = list(y_train_df.values[:, 12:])
+        x_test = []
+        for i, subject in enumerate(list(dict.fromkeys(y_test_df['pid'].values.tolist()))):
+            if params['with_time'] == 'yes':
+                x_test.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
+            elif params['with_time'] == 'no':
+                x_test.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 2:])
 
-    if params['collapse_time'] == 'no':
         x_final = []
         for i, subject in enumerate(list(dict.fromkeys(X_final_df['pid'].values.tolist()))):
-            if X_final_df.loc[X_final_df['pid'] == subject].values[:, 1:].shape[0] > 12:
-                raise Exception('more than 12 time-points')
             if params['with_time'] == 'yes':
                 x_final.append(X_final_df.loc[X_final_df['pid'] == subject].values[:, 1:])
             if params['with_time'] == 'no':
                 x_final.append(X_final_df.loc[X_final_df['pid'] == subject].values[:, 2:])
 
-    if params['task'] == 1:
+        input_shape = x_train[0].shape
+
+    if not params['standardizer'] == 'none':
+        x_train, scaler = utils.scaling(x_train, params)
+        x_test, _ = utils.scaling(x_test, params, scaler)
+        x_final, _ = utils.scaling(x_final, params, scaler)
+    else:
+        x_scaler = None
+
+    if params['collapse_time'] == 'yes':
+        if params['task'] == 12:
+            y_train1 = y_train_df.iloc[:, 1:12]
+        else:
+            y_train1 = y_train_df.iloc[:, 1:11]
+        y_train2 = y_train_df.iloc[:, 11]
+        y_train3 = y_train_df[:, 12:]
+    else:
+        if params['task'] == 12:
+            y_train1 = list(y_train_df.values[:, 1:12])
+        else:
+            y_train1 = list(y_train_df.values[:, 1:11])
+        y_train2 = list(y_train_df.values[:, 11])
+        y_train3 = list(y_train_df.values[:, 12:])
+    test_score1 = test_score2 = test_score3 = test_score12 = np.nan
+
+    if params['task'] == 1 or params['task'] == 12:
         print('\n\n**** Training model1 **** \n\n')
         loss = params['task1_loss']
         if loss == 'dice':
             loss = dice_coef_loss
-        model1, score1, scaler = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, 1,
-                                                   y_train_df)
-        score2 = score3 = np.nan
+        model1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, params['task'],
+                                   y_train_df)
+
     if params['task'] == 2:
         loss = params['task2_loss']
         if loss == 'dice':
             loss = dice_coef_loss
         print('\n\n**** Training model2 **** \n\n')
-        model2, score2, scaler = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, 2,
-                                                   y_train_df)
-        score1 = score3 = np.nan
+        model2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, 2,
+                                   y_train_df)
+
     if params['task'] == 3:
         loss = params['task3_loss']
         if loss == 'dice':
@@ -166,19 +204,70 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         elif loss == 'huber':
             loss = 'huber_loss'
         print('\n\n**** Training model3 **** \n\n')
-        model3, score3, scaler = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, 3,
-                                                   y_train_df)
-        score1 = score2 = np.nan
+        model3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, 3,
+                                   y_train_df)
 
-    if not params['standardizer'] == 'none':
-        x_final, _ = utils.scaling(x_final, params, scaler)
+    if params['model'] == 'resnet' or params['model'] == 'simple_conv_model':
+        x_final = np.expand_dims(x_final, -1)
+        x_test = np.expand_dims(x_test, -1)
+
     final_dataset = tf.data.Dataset.from_tensor_slices(x_final)
     final_dataset = final_dataset.batch(batch_size=params['batch_size'])
 
-    final_df = pd.read_csv('final.csv')
+    test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+    test_dataset = test_dataset.batch(batch_size=params['batch_size'])
 
-    if params['task'] == 1 and (not params_results_df['task1'].values.tolist() or not np.max(
-            params_results_df['task1'].values.tolist()) or score1 > np.max(params_results_df['task1'].values.tolist())):
+    final_df = pd.read_csv('final.csv')
+    if not os.path.exists('test_pred.csv'):
+        test_df = pd.DataFrame(columns=sample.columns)
+        test_df['pid'] = y_test_df['pid'].values
+        test_df.to_csv('test_pred.csv')
+    else:
+        test_df = pd.read_csv('test_pred.csv')
+
+    if params['task'] == 12:
+        test_prediction12 = model1.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(test_prediction12, columns=y_test_df.columns[1:12])
+        for col in test_prediction_df.columns:
+            test_df[col] = test_prediction_df[col]
+        test_df.reindex(columns=sample.columns)
+        test_score12 = score_submission.get_score(y_test_df, test_df)[0][0]
+
+    if params['task'] == 12 and (not params_results_df['task12'].values.tolist() or np.isnan(np.max(
+            params_results_df['task12'].values.tolist()))) or test_score12 > np.max(
+        params_results_df['task12'].values.tolist()):
+
+        test_df.to_csv('test_pred.csv', index=False)
+
+        print('\n\n**** Writing to final for task1 **** \n\n')
+        prediction1 = model1.predict(final_dataset)
+        prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:12])
+        for col in prediction_df.columns:
+            final_df[col] = prediction_df[col]
+        final_df.reindex(columns=sample.columns)
+        final_df.to_csv('final.csv', index=False)
+
+    elif params['task'] == 12:
+        print('\n\n**** Not writing to final for task12, current score: {} is smaller than {} **** \n\n'.format(
+            test_score12,
+            np.max(
+                params_results_df[
+                    'task12'].values.tolist())))
+
+    if params['task'] == 1:
+        test_prediction1 = model1.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(test_prediction1, columns=y_test_df.columns[1:11])
+        for col in test_prediction_df.columns:
+            test_df[col] = test_prediction_df[col]
+        test_df.reindex(columns=sample.columns)
+        test_score1 = score_submission.get_score(y_test_df, test_df)[0][0]
+
+    if params['task'] == 1 and (not params_results_df['task1'].values.tolist() or np.isnan(np.max(
+            params_results_df['task1'].values.tolist())) or test_score1 > np.max(
+        params_results_df['task1'].values.tolist())):
+
+        test_df.to_csv('test_pred.csv', index=False)
+
         print('\n\n**** Writing to final for task1 **** \n\n')
         prediction1 = model1.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:11])
@@ -186,13 +275,27 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
             final_df[col] = prediction_df[col]
         final_df.reindex(columns=sample.columns)
         final_df.to_csv('final.csv', index=False)
+
     elif params['task'] == 1:
-        print('\n\n**** Not writing to final for task1, current score: {} is smaller than {} **** \n\n'.format(score1,
-                                                                                                               np.max(
-                                                                                                                   params_results_df[
-                                                                                                                       'task1'].values.tolist())))
-    if params['task'] == 2 and (not params_results_df['task2'].values.tolist() or not np.max(
-            params_results_df['task2'].values.tolist()) or score2 > np.max(params_results_df['task2'].values.tolist())):
+        print('\n\n**** Not writing to final for task1, current score: {} is smaller than {} **** \n\n'.format(
+            test_score1,
+            np.max(
+                params_results_df[
+                    'task1'].values.tolist())))
+    if params['task'] == 2:
+        test_prediction2 = model2.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(test_prediction2, columns=[y_test_df.columns[11]])
+        for col in test_prediction_df.columns:
+            test_df[col] = test_prediction_df[col]
+        test_df.reindex(columns=sample.columns)
+        test_score2 = score_submission.get_score(y_test_df, test_df)[0][1]
+
+    if params['task'] == 2 and (not params_results_df['task2'].values.tolist() or np.isnan(np.max(
+            params_results_df['task2'].values.tolist())) or test_score2 > np.max(
+        params_results_df['task2'].values.tolist())):
+
+        test_df.to_csv('test_pred.csv', index=False)
+
         print('\n\n**** Writing to final for task2 **** \n\n')
         prediction2 = model2.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction2, columns=[y_train_df.columns[11]])
@@ -201,12 +304,29 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         final_df.reindex(columns=sample.columns)
         final_df.to_csv('final.csv', index=False)
     elif params['task'] == 2:
-        print('\n\n**** Not writing to final for task2, current score: {} is smaller than {} **** \n\n'.format(score2,
-                                                                                                               np.max(
-                                                                                                                   params_results_df[
-                                                                                                                       'task2'].values.tolist())))
-    if params['task'] == 3 and (not params_results_df['task3'].values.tolist() or not np.max(
-            params_results_df['task3'].values.tolist()) or score3 > np.max(params_results_df['task3'].values.tolist())):
+        print('\n\n**** Not writing to final for task2, current score: {} is smaller than {} **** \n\n'.format(
+            test_score2,
+            np.max(
+                params_results_df[
+                    'task2'].values.tolist())))
+    if params['task'] == 3:
+
+        if params['model'].startswith('lin'):
+            test_prediction3 = model3.predict(x_test)
+        else:
+            test_prediction3 = model3.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(test_prediction3, columns=y_test_df.columns[12:])
+        for col in test_prediction_df.columns:
+            test_df[col] = test_prediction_df[col]
+        test_df.reindex(columns=sample.columns)
+        test_score3 = score_submission.get_score(y_test_df, test_df)[0][2]
+
+    if params['task'] == 3 and (not params_results_df['task3'].values.tolist() or np.isnan(np.max(
+            params_results_df['task3'].values.tolist())) or test_score3 > np.max(
+        params_results_df['task3'].values.tolist())):
+
+        test_df.to_csv('test_pred.csv', index=False)
+
         print('\n\n**** Writing to final for task3 **** \n\n')
         if params['model'].startswith('lin'):
             prediction3 = model3.predict(x_final)
@@ -218,18 +338,20 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         final_df.reindex(columns=sample.columns)
         final_df.to_csv('final.csv', index=False)
     elif params['task'] == 3:
-        print('\n\n**** Not writing to final for task3, current score: {} is smaller than {} **** \n\n'.format(score3,
-                                                                                                               np.max(
-                                                                                                                   params_results_df[
-                                                                                                                       'task3'].values.tolist())))
+        print('\n\n**** Not writing to final for task3, current score: {} is smaller than {} **** \n\n'.format(
+            test_score3,
+            np.max(
+                params_results_df[
+                    'task3'].values.tolist())))
 
-    return score1, score2, score3, np.mean([score1, score2, score3])
+    return test_score1, test_score2, test_score3
 
 
-for search_space_dict in [search_space_dict_lin, search_space_dict_task1, search_space_dict_task2]:
+for search_space_dict in [search_space_dict_task12, search_space_dict_lin]:
+
     if not os.path.isfile('temp/params_results.csv'):
         columns = [key for key in search_space_dict.keys()]
-        for key in ['task1', 'task2', 'task3', 'score']:
+        for key in ['task1', 'task2', 'task3', 'task12', 'score']:
             columns.append(key)
         params_results_df = pd.DataFrame(columns=columns)
     else:
@@ -237,14 +359,19 @@ for search_space_dict in [search_space_dict_lin, search_space_dict_task1, search
         for key in search_space_dict.keys():
             if not key in list(params_results_df.columns):
                 params_results_df[key] = np.nan
+
     search_space = list(ParameterGrid(search_space_dict))
     search_space = random.sample(search_space, len(search_space))
+
     for params in tqdm(search_space):
+
         temp_df = params_results_df.loc[functools.reduce(operator.and_, (
             params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in
             search_space_dict.keys())), 'task{}'.format(params['task'])]
         not_tested = temp_df.empty or temp_df.isna().all()
+
         if not_tested or test == True:
+
             if params['impute_nn'] == 'yes':
                 if not os.path.isdir('imputed_data'):
                     os.mkdir('imputed_data')
@@ -258,7 +385,10 @@ for search_space_dict in [search_space_dict_lin, search_space_dict_task1, search
                     X_final_df = pd.read_csv('imputed_data/xtest_imputedNN{}.csv'.format(num_subjects))
             df = pd.DataFrame.from_records([params])
             scores = test_model(params, X_train_df, y_train_df, X_final_df, params_results_df)
-            for column, score in zip(['task1', 'task2', 'task3', 'score'], scores):
+
+            for column, score in zip(
+                    ['test_score1', 'test_score2',
+                     'test_score3'], scores):
                 if type(score) == list:
                     df[column] = -1
                     df[column] = df[column].astype('object')

@@ -10,6 +10,7 @@ from skimage.transform import resize
 from matplotlib import pyplot as plt
 import tensorflow as tf
 from sklearn.utils import shuffle
+from preprocess import store_batches
 
 batch_size = 128
 file = 'train_triplets.txt'
@@ -41,10 +42,14 @@ train_df, val_df = train_test_split(train_df, test_size=0.2, shuffle=True)
 
 input_shape = (128, 128)
 
+store_batches(train_df, 'train', input_shape, batch_size)
+store_batches(val_df, 'val', input_shape, batch_size)
+store_batches(test_df, 'test', input_shape, batch_size)
 
+asdsad
 # %%
 class train_dataset_cl(Sequence):
-    def __init__(self, set, batch_size=64, shape=(64, 64)):
+    def __init__(self, set, data_set_type, batch_size=64, shape=(64, 64)):
         """
         set is a dataframe
         """
@@ -52,11 +57,14 @@ class train_dataset_cl(Sequence):
         self.batch_size = batch_size
         self.shape = shape
         self.done = False
+        self.data_set_type = data_set_type
 
     def __len__(self):
         return int(np.ceil(len(self.set) / float(self.batch_size)))
 
     def __getitem__(self, idx):
+        with open('', 'rb') as fp:
+            itemlist = pickle.load(fp)
         x_batch = self.set.iloc[:, :-1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
         y_batch = self.set.iloc[:, -1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
         x, y = [np.array(
@@ -174,20 +182,27 @@ x = BatchNormalization()(x)
 x = Dense(1, activation='sigmoid')(x)
 
 model = Model(inputs=[inputa, inputb, inputc], outputs=x)
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+# model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# # Loads the weights
+# model.load_weights('models/saved_model.pb')
+#
+# # Re-evaluate the model
+# loss,acc = model.evaluate(test_images,  test_labels, verbose=2)
 
 # tf.keras.utils.plot_model(
 #     model, to_file='model.png', show_shapes=False, show_layer_names=True,
 #     rankdir='TB', expand_nested=False, dpi=96
 # )
 
-early_stopper = EarlyStopping(monitor='val_loss', patience=10)
-checkpoint = ModelCheckpoint('models/', save_best_only=True)
-logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
-                                        histogram_freq=1,
-                                        profile_batch='500,520')
-
-model.fit(train_dataset, validation_data=val_dataset, epochs=100,
-          steps_per_epoch=len(train_df) // batch_size // 4,
-          validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint, logger])
+# early_stopper = EarlyStopping(monitor='val_loss', patience=10)
+# checkpoint = ModelCheckpoint('models/', save_best_only=True)
+# logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
+#                                         histogram_freq=1,
+#                                         profile_batch='500,520')
+#
+# model.fit(train_dataset, validation_data=val_dataset, epochs=100,
+#           steps_per_epoch=len(train_df) // batch_size // 4,
+#           validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint, logger])
 model.evaluate_generator(val_dataset, verbose=1)
+print("Restored model, accuracy: {:5.2f}%".format(100 * acc))
