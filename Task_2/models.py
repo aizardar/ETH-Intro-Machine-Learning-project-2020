@@ -7,7 +7,8 @@ from tensorflow.keras import backend as K
 import tensorflow.keras.layers as layers
 import kerastuner
 
-#todo try this resnet: https://github.com/keras-team/keras-tuner/blob/master/examples/cifar10.py
+
+# todo try this resnet: https://github.com/keras-team/keras-tuner/blob/master/examples/cifar10.py
 
 
 def threelayers_task1(input_shape, loss, output_layer, task):
@@ -115,6 +116,58 @@ def threelayers(input_shape, loss, output_layer, task):
 
     return model
 
+class recurrent_net(kerastuner.HyperModel):
+    def __init__(self, input_shape, loss, output_layer, task):
+        super(recurrent_net, self).__init__()
+        self.input_shape = input_shape
+        self.loss = loss
+        self.output_layer = output_layer
+        self.task = task
+
+    def build(self, hp):
+        input_shape, loss, output_layer, task = [self.input_shape, self.loss, self.output_layer, self.task]
+        inputs = tf.keras.Input(shape=input_shape)
+        x = inputs
+        for i in range(hp.Int('conv_blocks', 1, 5, default=1)):
+            filters = hp.Int('filters_' + str(i), 32, 256, step=32)
+            for _ in range(2):
+                x = tf.keras.layers.Convolution2D(
+                  filters, kernel_size=(3, 3), padding='same')(x)
+                x = tf.keras.layers.BatchNormalization()(x)
+                x = tf.keras.layers.ReLU()(x)
+            if hp.Choice('pooling_' + str(i), ['avg', 'max']) == 'max':
+                x = tf.keras.layers.MaxPool2D()(x)
+            else:
+                x = tf.keras.layers.AvgPool2D()(x)
+        x = tf.keras.layers.GlobalAvgPool2D()(x)
+        x = tf.keras.layers.Dense(
+          hp.Int('hidden_size', 30, 100, step=10, default=50),
+          activation='relu')(x)
+        x = tf.keras.layers.Dropout(
+          hp.Float('dropout', 0, 0.5, step=0.1, default=0.5))(x)
+
+        if task == 1 or task == 12:
+            if task == 12:
+                outputs = keras.layers.Dense(11, activation=output_layer)(x)
+            else:
+                outputs = keras.layers.Dense(10, activation=output_layer)(x)
+            model = tf.keras.Model(inputs, outputs)
+            model.compile(optimizer='adagrad',
+                          loss=loss,
+                          metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+        if task == 2:
+            outputs = keras.layers.Dense(1, activation=output_layer)(x)
+            model = tf.keras.Model(inputs, outputs)
+            model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+        if task == 3:
+            outputs = keras.layers.Dense(4)(x)
+            model = tf.keras.Model(inputs, outputs)
+            model.compile(optimizer='adagrad',
+                          loss=loss,
+                          metrics=['mse'])
+
+        return model
+
 class dense_model(kerastuner.HyperModel):
     def __init__(self, input_shape, loss, output_layer, task):
         super(dense_model, self).__init__()
@@ -127,15 +180,15 @@ class dense_model(kerastuner.HyperModel):
         input_shape, loss, output_layer, task = [self.input_shape, self.loss, self.output_layer, self.task]
         model = Sequential()
         for i in range(hp.Int('Batchnorm', 0, 1, default=1)):
-            model.add(keras.layers.BatchNormalization(axis=-1, scale=hp.Choice('bn_scale_' + str(0), ['True', 'False'])))
+            model.add(
+                keras.layers.BatchNormalization(axis=-1, scale=hp.Choice('bn_scale_' + str(0), ['True', 'False'])))
         model.add(keras.layers.Dense(hp.Int('units_' + str(0), min_value=32,
                                             max_value=512,
                                             step=32, default=400),
-                                     input_shape=(12, 36),
                                      activation=tf.nn.relu,
                                      kernel_initializer='he_normal',
                                      kernel_regularizer=keras.regularizers.l2(l=1e-3)))
-        for i in range(hp.Int('num_layers', 1, 4,default=1)):
+        for i in range(hp.Int('num_layers', 1, 4, default=1)):
             model.add(keras.layers.Dense(units=hp.Int('units_' + str(i),
                                                       min_value=32,
                                                       max_value=512,

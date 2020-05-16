@@ -1,18 +1,16 @@
-import pandas as pd
-from sklearn import preprocessing
-import numpy as np
-import sklearn
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression, HuberRegressor
-from tqdm import tqdm
-from sklearn.model_selection import train_test_split
+import os
 import kerastuner
-from kerastuner import RandomSearch
-import tensorflow as tf
 import models
-import sklearn.metrics as metrics
-from scipy.spatial.distance import dice
+import numpy as np
+import pandas as pd
+import sklearn
+import tensorflow as tf
 from fancyimpute import KNN
+from kerastuner import RandomSearch
+from sklearn import preprocessing
+from sklearn.linear_model import LinearRegression, HuberRegressor
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 
 def remove_outliers(x_train, y_train):
@@ -25,7 +23,6 @@ def remove_outliers(x_train, y_train):
 def handle_nans(X_train_df, params, seed):
     print('handling nans with method {}'.format(params['nan_handling']))
     if params['nan_handling'] == 'iterative':
-        from sklearn.experimental import enable_iterative_imputer
         from sklearn.impute import IterativeImputer
         imp = IterativeImputer(max_iter=10, random_state=seed)
         imp.fit(X_train_df)
@@ -33,15 +30,19 @@ def handle_nans(X_train_df, params, seed):
         # X_train_df.to_csv('temp/imputed_taining_data.csv')
     elif params['nan_handling'] == 'minusone':
         X_train_df = X_train_df.fillna(-1)
+        imp = 0
     elif params['nan_handling'] == 'zero':
         X_train_df = X_train_df.fillna(0)
+        imp = 0
     elif params['nan_handling'] == 'KNN':
         X_train_df = KNN(k=3).fit_transform(X_train_df)
-    elif params['nan_handling'] == 'iterative':
+        imp = 0
+    else:
         imp = sklearn.impute.SimpleImputer(missing_values=np.nan, strategy=params['nan_handling'])
         imp.fit(X_train_df)
         X_train_df = pd.DataFrame(data=imp.transform(X_train_df), columns=X_train_df.columns)
-    return X_train_df
+
+    return X_train_df, imp
 
 
 def get_scaler(params):
@@ -92,16 +93,9 @@ def scaling(x, params, x_scaler=None):
 
 
 def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task, y_train_df):
-    # todo this is not needed?
-    # feature_cols = x_train.columns.values[
-    #     (x_train.columns.values != 'pid') & (x_train.columns.values != 'Time')]
-    #
-    # x_trainval = x_trainval[feature_cols]
-    # x_test = x_test[feature_cols]
-
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=seed)
 
-    if params['model'] == 'resnet' or params['model'] == 'simple_conv_model':
+    if params['model'] in ['resnet', 'recurrent_net', 'simple_conv_model']:
         x_train = np.expand_dims(x_train, -1)
         x_val = np.expand_dims(x_val, -1)
         input_shape = x_train.shape[1:]
@@ -130,7 +124,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                                              restore_best_weights=True)
     callbacks = [CB_lr, CB_es]
 
-    if params['keras_tuner'] == 'no':
+    if params['model'] in ['lin_reg', 'lin_huber', 'threelayers', 'svm', 'resnet']:
         if params['model'].startswith('lin'):
             if params['model'] == 'lin_reg':
                 model = LinearRegression().fit(x_train, y_train)
@@ -150,15 +144,23 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                       steps_per_epoch=len(x_train) // params['batch_size'],
                       validation_steps=len(x_val) // params['batch_size'], callbacks=callbacks)
 
-    elif params['keras_tuner'] == 'yes':
+    else:
         if params['model'] == 'simple_conv_model':
             hypermodel = models.simple_conv_model(input_shape, loss, params['task{}_activation'.format(params['task'])],
                                                   task)
         elif params['model'] == 'dense_model':
             hypermodel = models.dense_model(input_shape, loss, params['task{}_activation'.format(params['task'])], task)
-        tuner = RandomSearch(hypermodel, objective=kerastuner.Objective("val_auc", direction="max"),
+        elif params['model'] == 'recurrent_net':
+            hypermodel = models.recurrent_net(input_shape, loss, params['task{}_activation'.format(params['task'])],
+                                              task)
+        if not os.path.exists('tuner_trials'):
+            os.mkdir('tuner_trials')
+        tuner = RandomSearch(hypermodel, objective=kerastuner.Objective(
+            "val_auc" * (params['task'] == 1 or params['task'] == 12) + "val_mse" * (params['task'] == 3),
+            direction="max"),
                              max_trials=params['tuner_trials'],
-                             project_name='{}_task{}'.format(params['model'], params['task']))
+                             project_name='keras_tuner/{}_{}_task{}'.format(params['model'], input_shape,
+                                                                            params['task']))
         tuner.search_space_summary()
         tuner.search(train_dataset, validation_data=val_dataset, epochs=epochs,
                      steps_per_epoch=len(x_train) // params['batch_size'],

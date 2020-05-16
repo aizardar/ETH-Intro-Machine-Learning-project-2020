@@ -28,7 +28,7 @@ test = False
 seed = 1
 num_subjects = -1  # number of subjects out of 18995
 epochs = 1000
-tuner_trials = 10
+tuner_trials = 50
 # Todo collapse persons over time to find outlayers?
 
 search_space_dict_task1 = {
@@ -39,7 +39,6 @@ search_space_dict_task1 = {
     'impute_nn': ['yes'],
     'epochs': [epochs],
     'numbr_subjects': [num_subjects],
-    'keras_tuner': ['no'],
     'task': [1],
     'task1_activation': ['sigmoid'],
     'task1_loss': ['dice'],
@@ -48,18 +47,17 @@ search_space_dict_task1 = {
     'tuner_trials': [tuner_trials],
 }
 search_space_dict_task12 = {
-    'nan_handling': ['minusone', 'iterative'],
+    'nan_handling': ['mean', 'minusone', 'iterative'],
     'standardizer': ['RobustScaler', 'minmax'],
-    'model': ['dense_model'],
+    'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
     'epochs': [epochs],
     'numbr_subjects': [num_subjects],
-    'keras_tuner': ['yes'],
     'task': [12],
     'task12_activation': ['sigmoid'],
     'task1_loss': ['dice'],
-    'with_time': ['no', 'yes'],
+    'with_time': ['yes', 'no'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
 }
@@ -72,7 +70,6 @@ search_space_dict_task2 = {
     'model': ['threelayers'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
-    'keras_tuner': ['yes'],
     'epochs': [epochs],
     'numbr_subjects': [num_subjects],
     'task': [2],
@@ -84,15 +81,14 @@ search_space_dict_task2 = {
 }
 
 search_space_dict_lin = {
-    'nan_handling': ['iterative', 'minusone'],
+    'nan_handling': ['iterative', 'minusone', 'mean'],
     'task3_activation': [None],
     'standardizer': ['minmax'],
-    'model': ['dense_model'],
+    'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
     'epochs': [epochs],
     'task3_loss': ['mse', 'huber'],
-    'keras_tuner': ['no'],
     'numbr_subjects': [num_subjects],
     'task': [3],
     'with_time': ['yes', 'no'],
@@ -111,28 +107,36 @@ X_final_df = pd.read_csv('test_features.csv')
 
 def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     print('\n', params)
-    train_path = 'nan_handling/train{}_{}.csv'.format(num_subjects, params['nan_handling'])
-    x_final_path = 'nan_handling/test{}_{}.csv'.format(num_subjects, params['nan_handling'])
-
-    if os.path.isfile(train_path) and os.path.isfile(x_final_path):
-        X_train_df = pd.read_csv(train_path)
-        X_final_df = pd.read_csv(x_final_path)
-    else:
-        X_train_df = utils.handle_nans(X_train_df, params, seed)
-        X_train_df.to_csv(train_path, index=False)
-        X_final_df = utils.handle_nans(X_final_df, params, seed)
-        X_final_df.to_csv(x_final_path, index=False)
-
-    if params['collapse_time'] == 'yes':
-        if params['with_time'] == 'no':
-            x_train = X_train_df.groupby('pid').mean().reset_index()
-            x_final = X_final_df.groupby('pid').mean().reset_index()
-        if params['with_time'] == 'yes':
-            x_final = X_final_df.groupby('pid').mean().reset_index()
-            x_train = X_train_df.groupby('pid').mean().reset_index()
-        input_shape = x_train.shape
 
     y_train_df, y_test_df = train_test_split(y_train_df, test_size=0.2, random_state=seed)
+    X_train_df, X_test_df = [X_train_df.merge(y_train_df, on='pid')[X_train_df.columns],
+                             X_train_df.merge(y_test_df, on='pid')[X_train_df.columns]]
+
+    train_path = 'nan_handling/train{}_{}.csv'.format(num_subjects, params['nan_handling'])
+    x_final_path = 'nan_handling/final{}_{}.csv'.format(num_subjects, params['nan_handling'])
+    x_test_path = 'nan_handling/test{}_{}.csv'.format(num_subjects, params['nan_handling'])
+
+    if os.path.isfile(train_path) and os.path.isfile(x_final_path) and os.path.isfile(x_test_path):
+        X_train_df = pd.read_csv(train_path)
+        X_final_df = pd.read_csv(x_final_path)
+        X_test_df = pd.read_csv(x_test_path)
+    else:
+        X_train_df, imp = utils.handle_nans(X_train_df, params, seed)
+        X_train_df.to_csv(train_path, index=False)
+        if not params['nan_handling'] in ['zero', 'minusone']:
+            X_final_df = pd.DataFrame(data=imp.transform(X_final_df), columns=X_final_df.columns)
+            X_test_df = pd.DataFrame(data=imp.transform(X_test_df), columns=X_test_df.columns)
+        else:
+            X_final_df, _ = utils.handle_nans(X_final_df, params, seed)
+            X_test_df, _ = utils.handle_nans(X_test_df, params, seed)
+        X_final_df.to_csv(x_final_path, index=False)
+        X_test_df.to_csv(x_test_path, index=False)
+
+    if params['collapse_time'] == 'yes':
+        x_train = X_train_df.groupby('pid').mean().reset_index()
+        x_final = X_final_df.groupby('pid').mean().reset_index()
+        x_test = X_test_df.groupby('pid').mean().reset_index()
+        input_shape = x_train.shape
 
     if params['collapse_time'] == 'no':
         x_train = []
@@ -145,9 +149,9 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         x_test = []
         for i, subject in enumerate(list(dict.fromkeys(y_test_df['pid'].values.tolist()))):
             if params['with_time'] == 'yes':
-                x_test.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
+                x_test.append(X_test_df.loc[X_test_df['pid'] == subject].values[:, 1:])
             elif params['with_time'] == 'no':
-                x_test.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 2:])
+                x_test.append(X_test_df.loc[X_test_df['pid'] == subject].values[:, 2:])
 
         x_final = []
         for i, subject in enumerate(list(dict.fromkeys(X_final_df['pid'].values.tolist()))):
@@ -179,6 +183,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
             y_train1 = list(y_train_df.values[:, 1:11])
         y_train2 = list(y_train_df.values[:, 11])
         y_train3 = list(y_train_df.values[:, 12:])
+
     test_score1 = test_score2 = test_score3 = test_score12 = np.nan
 
     if params['task'] == 1 or params['task'] == 12:
@@ -239,7 +244,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
         test_df.to_csv('test_pred.csv', index=False)
 
-        print('\n\n**** Writing to final for task1 **** \n\n')
+        print('\n\n**** Writing to final for task12 **** \n\n')
         prediction1 = model1.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:12])
         for col in prediction_df.columns:
@@ -344,7 +349,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
                 params_results_df[
                     'task3'].values.tolist())))
 
-    return test_score1, test_score2, test_score3
+    return test_score1, test_score2, test_score3, test_score12
 
 
 for search_space_dict in [search_space_dict_task12, search_space_dict_lin]:
@@ -388,7 +393,7 @@ for search_space_dict in [search_space_dict_task12, search_space_dict_lin]:
 
             for column, score in zip(
                     ['test_score1', 'test_score2',
-                     'test_score3'], scores):
+                     'test_score3', 'test_score12'], scores):
                 if type(score) == list:
                     df[column] = -1
                     df[column] = df[column].astype('object')
