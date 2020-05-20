@@ -1,4 +1,3 @@
-# %%
 import pandas as pd
 import os
 from sklearn.model_selection import train_test_split
@@ -12,43 +11,31 @@ import tensorflow as tf
 from sklearn.utils import shuffle
 from preprocess import store_batches
 
-batch_size = 128
 file = 'train_triplets.txt'
+batch_size = 128
 
 df = pd.read_csv(file, sep=' ', names=['A', 'B', 'C'],
                  dtype='str')
-df['label'] = 1
 
-df_ = pd.read_csv(file, sep=' ', names=['B', 'A', 'C'],
-                  dtype='str')
-df_['label'] = 1
+if not os.path.exists('new_labeled_trainest.csv'):
+    train_df = create_labeled_trainset(df)
+    train_df.to_csv('new_labeled_trainest.csv', index=False)
+else:
+    train_df = pd.read_csv('new_labeled_trainest.csv', dtype = 'str')
 
-df = df.append(df_)
-
-df_ = pd.read_csv(file, sep=' ', names=['A', 'C', 'B'],
-                  dtype='str')
-df_['label'] = 0
-
-df = df.append(df_)
-
-df_ = pd.read_csv(file, sep=' ', names=['B', 'C', 'A'],
-                  dtype='str')
-df_['label'] = 0
-
-df = df.append(df_)
-df = shuffle(df)
-train_df, test_df = train_test_split(df, test_size=0.2, shuffle=True)
+train_df, test_df = train_test_split(train_df.iloc[:, 1:], test_size=0.2, shuffle=True)
 train_df, val_df = train_test_split(train_df, test_size=0.2, shuffle=True)
 
 input_shape = (128, 128)
 
-store_batches(train_df, 'train', input_shape, batch_size)
-store_batches(val_df, 'val', input_shape, batch_size)
-store_batches(test_df, 'test', input_shape, batch_size)
+
+# store_batches(train_df, 'train', input_shape, batch_size)
+# store_batches(val_df, 'val', input_shape, batch_size)
+# store_batches(test_df, 'test', input_shape, batch_size)
 
 # %%
 class train_dataset_cl(Sequence):
-    def __init__(self, set, data_set_type, batch_size=64, shape=(64, 64)):
+    def __init__(self, set, batch_size=64, shape=(64, 64)):
         """
         set is a dataframe
         """
@@ -56,36 +43,29 @@ class train_dataset_cl(Sequence):
         self.batch_size = batch_size
         self.shape = shape
         self.done = False
-        self.data_set_type = data_set_type
 
     def __len__(self):
         return int(np.ceil(len(self.set) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        with open('', 'rb') as fp:
-            itemlist = pickle.load(fp)
         x_batch = self.set.iloc[:, :-1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
         y_batch = self.set.iloc[:, -1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
         x, y = [np.array(
             [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[0]))), input_shape) for
              file_names in x_batch]), np.array(
             [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[1]))), input_shape) for
-             file_names in x_batch]), np.array(
-            [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[2]))), input_shape) for
              file_names in x_batch])], y_batch
         if not self.done:
-            plt.subplot(1, 3, 1)
+            plt.subplot(1, 2, 1)
             plt.axis('off')
             plt.imshow(x[0][0])
-            plt.subplot(1, 3, 2)
+            plt.subplot(1, 2, 2)
             plt.axis('off')
             plt.imshow(x[1][0])
-            plt.subplot(1, 3, 3)
-            plt.axis('off')
-            plt.imshow(x[2][0])
+            plt.title(str(y[0]))
             plt.savefig('temp/vis')
             self.done = True
-        return x, y
+        return x, y.astype(int)
 
 
 train_dataset = train_dataset_cl(train_df, batch_size=batch_size, shape=input_shape)
@@ -101,7 +81,6 @@ import tensorflow.keras.backend as K
 
 inputa = Input(shape=input_shape + (3,))
 inputb = Input(shape=input_shape + (3,))
-inputc = Input(shape=input_shape + (3,))
 
 
 def attention_up_and_concate(down_layer, layer, data_format='channels_last'):
@@ -166,22 +145,20 @@ def head(x):
     return x
 
 
-# a = head(inputa)
-# b = head(inputb)
-# c = head(inputc)
+a = head(inputa)
+b = head(inputb)
 
-a = inputa
-b = inputb
-c = inputc
+# a = inputa
+# b = inputb
 
-x = concatenate([a, b, c])
+x = concatenate([a, b])
 x = Flatten()(x)
 x = Dense(64, activation='relu')(x)
 x = BatchNormalization()(x)
-x = Dense(1, activation='sigmoid')(x)
+x = Dense(1)(x)
 
-model = Model(inputs=[inputa, inputb, inputc], outputs=x)
-# model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model = Model(inputs=[inputa, inputb], outputs=x)
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # # Loads the weights
 # model.load_weights('models/saved_model.pb')
@@ -194,14 +171,13 @@ model = Model(inputs=[inputa, inputb, inputc], outputs=x)
 #     rankdir='TB', expand_nested=False, dpi=96
 # )
 
-# early_stopper = EarlyStopping(monitor='val_loss', patience=10)
-# checkpoint = ModelCheckpoint('models/', save_best_only=True)
+early_stopper = EarlyStopping(monitor='val_loss', patience=10)
+checkpoint = ModelCheckpoint('models/', save_best_only=True, save_weights_only=True)
 # logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
 #                                         histogram_freq=1,
 #                                         profile_batch='500,520')
-#
-# model.fit(train_dataset, validation_data=val_dataset, epochs=100,
-#           steps_per_epoch=len(train_df) // batch_size // 4,
-#           validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint, logger])
+
+model.fit(train_dataset, validation_data=val_dataset, epochs=1000,
+          steps_per_epoch=len(train_df) // batch_size,
+          validation_steps=len(val_df) // batch_size, shuffle=True, callbacks=[early_stopper, checkpoint])
 model.evaluate_generator(val_dataset, verbose=1)
-print("Restored model, accuracy: {:5.2f}%".format(100 * acc))

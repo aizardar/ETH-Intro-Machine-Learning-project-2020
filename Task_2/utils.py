@@ -124,7 +124,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                                              restore_best_weights=True)
     callbacks = [CB_lr, CB_es]
 
-    if params['model'] in ['lin_reg', 'lin_huber', 'threelayers', 'svm', 'resnet']:
+    if params['model'] in ['lin_reg', 'lin_huber', 'threelayers', 'svm', 'resnet', 'lstm']:
         if params['model'].startswith('lin'):
             if params['model'] == 'lin_reg':
                 model = LinearRegression().fit(x_train, y_train)
@@ -139,6 +139,8 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                 model = models.toy_ResNet(input_shape, loss)
             elif params['model'] == 'simple_conv_model':
                 model = models.simple_conv_model(input_shape, loss)
+            elif params['model'] == 'lstm':
+                model = models.lstm(input_shape, loss, params, params['task'])
 
             model.fit(train_dataset, validation_data=val_dataset, epochs=epochs,
                       steps_per_epoch=len(x_train) // params['batch_size'],
@@ -153,14 +155,15 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
         elif params['model'] == 'recurrent_net':
             hypermodel = models.recurrent_net(input_shape, loss, params['task{}_activation'.format(params['task'])],
                                               task)
+
         if not os.path.exists('tuner_trials'):
             os.mkdir('tuner_trials')
         tuner = RandomSearch(hypermodel, objective=kerastuner.Objective(
             "val_auc" * (params['task'] == 1 or params['task'] == 12) + "val_mse" * (params['task'] == 3),
             direction="max"),
                              max_trials=params['tuner_trials'],
-                             project_name='keras_tuner/{}_{}_task{}'.format(params['model'], input_shape,
-                                                                            params['task']))
+                             project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
+                                                                            params['task'], params['uid']))
         tuner.search_space_summary()
         tuner.search(train_dataset, validation_data=val_dataset, epochs=epochs,
                      steps_per_epoch=len(x_train) // params['batch_size'],

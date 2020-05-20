@@ -12,6 +12,7 @@ from models import dice_coef_loss
 from tqdm import tqdm
 import random
 import score_submission
+import uuid
 
 """
 Predict whether medical tests are ordered by a clinician in the remainder of the hospital stay: 0 means that there will be no further tests of this kind ordered, 1 means that at least one of a test of that kind will be ordered. In the submission file, you are asked to submit predictions in the interval [0, 1], i.e., the predictions are not restricted to binary. 0.0 indicates you are certain this test will not be ordered, 1.0 indicates you are sure it will be ordered. The corresponding columns containing the binary groundtruth in train_labels.csv are: LABEL_BaseExcess, LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2, LABEL_Bilirubin_direct, LABEL_EtCO2.
@@ -45,11 +46,14 @@ search_space_dict_task1 = {
     'with_time': ['no'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
+    'uid': [uuid.uuid4()],
 }
 search_space_dict_task12 = {
     'nan_handling': ['mean', 'minusone', 'iterative'],
     'standardizer': ['RobustScaler', 'minmax'],
-    'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+    # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+    'model': ['lstm'],
+    'output_layer': ['sigmoid', 'softmax'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
     'epochs': [epochs],
@@ -60,13 +64,14 @@ search_space_dict_task12 = {
     'with_time': ['yes', 'no'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
+    'uid': [uuid.uuid4()],
 }
 
 search_space_dict_task2 = {
     # 'loss': ['dice','binary_crossentropy'],
     'nan_handling': ['minusone'],
     'standardizer': ['minmax'],
-    # 'output_layer': ['sigmoid'],
+    'output_layer': ['sigmoid'],
     'model': ['threelayers'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
@@ -78,6 +83,7 @@ search_space_dict_task2 = {
     'with_time': ['yes'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
+    'uid': [uuid.uuid4()],
 }
 
 search_space_dict_lin = {
@@ -94,6 +100,7 @@ search_space_dict_lin = {
     'with_time': ['yes', 'no'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
+    'uid': [uuid.uuid4()],
 }
 
 sample = pd.read_csv('sample.csv')
@@ -352,7 +359,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     return test_score1, test_score2, test_score3, test_score12
 
 
-for search_space_dict in [search_space_dict_task12, search_space_dict_lin]:
+for search_space_dict in [search_space_dict_lin]:
 
     if not os.path.isfile('temp/params_results.csv'):
         columns = [key for key in search_space_dict.keys()]
@@ -372,7 +379,7 @@ for search_space_dict in [search_space_dict_task12, search_space_dict_lin]:
 
         temp_df = params_results_df.loc[functools.reduce(operator.and_, (
             params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in
-            search_space_dict.keys())), 'task{}'.format(params['task'])]
+            search_space_dict.keys() if not item == 'uid')), 'task{}'.format(params['task'])]
         not_tested = temp_df.empty or temp_df.isna().all()
 
         if not_tested or test == True:
