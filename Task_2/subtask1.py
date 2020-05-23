@@ -28,7 +28,7 @@ Questions:
 test = False
 seed = 1
 num_subjects = -1  # number of subjects out of 18995
-epochs = 1000
+epochs = 100
 tuner_trials = 50
 # Todo collapse persons over time to find outlayers?
 
@@ -72,7 +72,7 @@ search_space_dict_task2 = {
     'nan_handling': ['minusone'],
     'standardizer': ['minmax'],
     'output_layer': ['sigmoid'],
-    'model': ['threelayers'],
+    'model': ['svm'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
     'epochs': [epochs],
@@ -86,11 +86,13 @@ search_space_dict_task2 = {
     'uid': [uuid.uuid4()],
 }
 
-search_space_dict_lin = {
-    'nan_handling': ['iterative', 'minusone', 'mean'],
-    'task3_activation': [None],
-    'standardizer': ['minmax'],
-    'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+search_space_dict_task3 = {
+    # 'nan_handling': ['iterative', 'minusone', 'mean'],
+    'nan_handling': ['minusone'],
+    'task3_activation': ['linear'],
+    'standardizer': ['RobustScaler', 'minmax'],
+    # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+    'model': ['threelayers'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
     'epochs': [epochs],
@@ -100,6 +102,25 @@ search_space_dict_lin = {
     'with_time': ['yes', 'no'],
     'collapse_time': ['no'],
     'tuner_trials': [tuner_trials],
+    'uid': [uuid.uuid4()],
+}
+
+search_space_dict_lin = {
+    'nan_handling': ['iterative', 'minusone', 'mean'],
+    # 'nan_handling': ['minusone'],
+    'task3_activation': [None],
+    'standardizer': ['RobustScaler', 'minmax'],
+    # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+    'model': ['lin_reg'],
+    'batch_size': [None],
+    'impute_nn': ['yes', 'no'],
+    'epochs': [None],
+    'task3_loss': [None],
+    'numbr_subjects': [num_subjects],
+    'task': [3],
+    'with_time': ['yes', 'no'],
+    'collapse_time': ['yes'],
+    'tuner_trials': [None],
     'uid': [uuid.uuid4()],
 }
 
@@ -182,7 +203,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         else:
             y_train1 = y_train_df.iloc[:, 1:11]
         y_train2 = y_train_df.iloc[:, 11]
-        y_train3 = y_train_df[:, 12:]
+        y_train3 = y_train_df.iloc[:, 12:]
     else:
         if params['task'] == 12:
             y_train1 = list(y_train_df.values[:, 1:12])
@@ -223,11 +244,12 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         x_final = np.expand_dims(x_final, -1)
         x_test = np.expand_dims(x_test, -1)
 
-    final_dataset = tf.data.Dataset.from_tensor_slices(x_final)
-    final_dataset = final_dataset.batch(batch_size=params['batch_size'])
+    if not params['model'].startswith('lin'):
+        final_dataset = tf.data.Dataset.from_tensor_slices(x_final)
+        final_dataset = final_dataset.batch(batch_size=params['batch_size'])
 
-    test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
-    test_dataset = test_dataset.batch(batch_size=params['batch_size'])
+        test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+        test_dataset = test_dataset.batch(batch_size=params['batch_size'])
 
     final_df = pd.read_csv('final.csv')
     if not os.path.exists('test_pred.csv'):
@@ -251,7 +273,8 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
         test_df.to_csv('test_pred.csv', index=False)
 
-        print('\n\n**** Writing to final for task12 **** \n\n')
+        print('\n\n**** Writing to final for task12: new score {} is better than old score {} **** \n\n'.format(
+            test_score12, np.max(params_results_df['task12'].values.tolist())))
         prediction1 = model1.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:12])
         for col in prediction_df.columns:
@@ -280,7 +303,8 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
         test_df.to_csv('test_pred.csv', index=False)
 
-        print('\n\n**** Writing to final for task1 **** \n\n')
+        print('\n\n**** Writing to final for task1: new score {} is better than old score {} **** \n\n'.format(
+            test_score1, np.max(params_results_df['task1'].values.tolist())))
         prediction1 = model1.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction1, columns=y_train_df.columns[1:11])
         for col in prediction_df.columns:
@@ -308,7 +332,8 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
         test_df.to_csv('test_pred.csv', index=False)
 
-        print('\n\n**** Writing to final for task2 **** \n\n')
+        print('\n\n**** Writing to final for task2: new score {} is better than old score {} **** \n\n'.format(
+            test_score2, np.max(params_results_df['task2'].values.tolist())))
         prediction2 = model2.predict(final_dataset)
         prediction_df = pd.DataFrame(prediction2, columns=[y_train_df.columns[11]])
         for col in prediction_df.columns:
@@ -328,6 +353,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         else:
             test_prediction3 = model3.predict(test_dataset)
         test_prediction_df = pd.DataFrame(test_prediction3, columns=y_test_df.columns[12:])
+        print(test_prediction_df.head(10))
         for col in test_prediction_df.columns:
             test_df[col] = test_prediction_df[col]
         test_df.reindex(columns=sample.columns)
@@ -339,7 +365,8 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
         test_df.to_csv('test_pred.csv', index=False)
 
-        print('\n\n**** Writing to final for task3 **** \n\n')
+        print('\n\n**** Writing to final for task3: new score {} is better than old score {} **** \n\n'.format(
+            test_score3, np.max(params_results_df['task3'].values.tolist())))
         if params['model'].startswith('lin'):
             prediction3 = model3.predict(x_final)
         else:
@@ -379,7 +406,7 @@ for search_space_dict in [search_space_dict_lin]:
 
         temp_df = params_results_df.loc[functools.reduce(operator.and_, (
             params_results_df['{}'.format(item)] == params['{}'.format(item)] for item in
-            search_space_dict.keys() if not item == 'uid')), 'task{}'.format(params['task'])]
+            search_space_dict.keys() if not item == 'uid')), 'test_score{}'.format(params['task'])]
         not_tested = temp_df.empty or temp_df.isna().all()
 
         if not_tested or test == True:

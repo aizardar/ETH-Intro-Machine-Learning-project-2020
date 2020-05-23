@@ -12,7 +12,6 @@ from sklearn.utils import shuffle
 import pickle
 import os
 from tqdm import tqdm
-from tqdm import tqdm
 
 
 def store_batches(set, data_set, input_shape, batch_size):
@@ -37,15 +36,15 @@ def store_batches(set, data_set, input_shape, batch_size):
 def create_labeled_trainset(df):
     df_new = pd.DataFrame(columns=['uid', 'A', 'B', 'label'])
 
-    for index, row in tqdm(df.iterrows()):
-        uid_ab = sorted([row['A'] , row['B']])
+    for index, row in df.iterrows():
+        uid_ab = sorted([row['A'], row['B']])
         uid_ab = uid_ab[0] + uid_ab[1]
         if uid_ab in df_new['uid']:
             df_new.loc[df_new['uid'] == uid_ab] += 1
         else:
             df_new = df_new.append(pd.DataFrame([[uid_ab, row['A'], row['B'], 1]], columns=['uid', 'A', 'B', 'label']))
 
-        uid_ac = sorted([row['A'] , row['B']])
+        uid_ac = sorted([row['A'], row['B']])
         uid_ac = uid_ac[0] + uid_ac[1]
         if uid_ac in df_new['uid']:
             df_new.loc[df_new['uid'] == uid_ac] -= 1

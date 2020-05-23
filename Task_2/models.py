@@ -250,7 +250,7 @@ def svm(input_shape, loss, output_layer):
     model.add(Activation(output_layer))
     model.compile(loss=loss,
                   optimizer='adadelta',
-                  metrics=[dice_coef, 'mse'])
+                  metrics=['mse'])
     return model
 
 

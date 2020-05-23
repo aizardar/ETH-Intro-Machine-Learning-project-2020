@@ -102,16 +102,17 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
     """
     Making datasets
     """
-    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    train_dataset = train_dataset.shuffle(len(x_train)).batch(batch_size=params['batch_size']).repeat()
-    val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
-    val_dataset = val_dataset.shuffle(len(x_val)).batch(batch_size=params['batch_size']).repeat()
+    if not params['model'].startswith('lin'):
+        train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+        train_dataset = train_dataset.shuffle(len(x_train)).batch(batch_size=params['batch_size']).repeat()
+        val_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
+        val_dataset = val_dataset.shuffle(len(x_val)).batch(batch_size=params['batch_size']).repeat()
 
     """
     Callbacks 
     """
     CB_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 patience=5,
+                                                 patience=10,
                                                  verbose=1,
                                                  min_delta=0.0001,
                                                  min_lr=1e-6)
@@ -122,7 +123,9 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                                              patience=10,
                                              mode='min',
                                              restore_best_weights=True)
-    callbacks = [CB_lr, CB_es]
+    #todo
+    # callbacks = [CB_lr, CB_es]
+    callbacks = [CB_lr]
 
     if params['model'] in ['lin_reg', 'lin_huber', 'threelayers', 'svm', 'resnet', 'lstm']:
         if params['model'].startswith('lin'):
