@@ -197,10 +197,10 @@ model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']
 # # Re-evaluate the model
 # loss,acc = model.evaluate(test_images,  test_labels, verbose=2)
 
-# tf.keras.utils.plot_model(
-#     model, to_file='model.png', show_shapes=False, show_layer_names=True,
-#     rankdir='TB', expand_nested=False, dpi=96
-# )
+tf.keras.utils.plot_model(
+    model, to_file='model.png', show_shapes=False, show_layer_names=True,
+    rankdir='TB', expand_nested=False, dpi=96
+)
 
 early_stopper = EarlyStopping(monitor='val_loss', patience=10)
 checkpoint = ModelCheckpoint('models/', save_best_only=True, save_weights_only=True)

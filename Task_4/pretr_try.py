@@ -47,10 +47,14 @@ input_shape = (128, 128)
 
 if os.path.exists('/mnt/larry1/task_4_batches/'):
     batches_save_path = '/mnt/larry1/task_4_batches/'
+elif os.path.exists('/media/miplab-nas2/Data/klug/hendrik'):
+    batches_save_path = '/media/miplab-nas2/Data/klug/hendrik/task_4_batches/'
 else:
     batches_save_path = os.path.expanduser('~/Desktop/larry1/task_4_batches/')
 
 if not os.path.exists(batches_save_path):
+    print('saving batches')
+    os.mkdir(batches_save_path)
     store_batches(train_df, batches_save_path + 'train', input_shape, batch_size)
     store_batches(val_df, batches_save_path + 'val', input_shape, batch_size)
     store_batches(test_df, batches_save_path + 'test', input_shape, batch_size)
@@ -80,6 +84,8 @@ class train_dataset_cl(Sequence):
             y_batch = pickle.load(fp)
 
         if not self.done:
+            if not os.path.exists('temp'):
+                os.mkdir('temp')
             plt.figure(figsize=(10, 40))
             img_idx = 1
             for i in range(10):
@@ -104,13 +110,6 @@ class train_dataset_cl(Sequence):
 train_dataset = train_dataset_cl(train_df, 'train', batch_size=batch_size, shape=input_shape)
 val_dataset = train_dataset_cl(val_df, 'val', batch_size=batch_size, shape=input_shape)
 test_dataset = train_dataset_cl(test_df, 'test', batch_size=batch_size, shape=input_shape)
-
-# feature_extractor = Model(inputs=pretrained_model.input, outputs=pretrained_model.get_layer('mixed7').output)
-
-# for layer in pretrained_model.layers:
-#     layer.trainable = False
-# last_layer = pretrained_model.get_layer('mixed7')
-# last_output = last_layer.output
 
 inputa = Input(shape=input_shape + (3,))
 inputb = Input(shape=input_shape + (3,))
@@ -157,19 +156,56 @@ model.compile(loss='binary_crossentropy',
               optimizer=RMSprop(lr=0.0001),
               metrics=['acc'])
 
-tf.keras.utils.plot_model(
-    model, to_file='model.png', show_shapes=False, show_layer_names=True,
-    rankdir='TB', expand_nested=False, dpi=96
-)
+# tf.keras.utils.plot_model(
+#     model, to_file='model.png', show_shapes=False, show_layer_names=True,
+#     rankdir='TB', expand_nested=False, dpi=96
+# )
 
-early_stopper = EarlyStopping(monitor='val_loss', patience=10)
-checkpoint = ModelCheckpoint('models/', save_best_only=True, save_weights_only=True)
+early_stopper = EarlyStopping(monitor='val_acc', patience=5, verbose=True)
+checkpoint_filepath = 'models/checkpoint.hdf5'
+checkpoint = ModelCheckpoint(filepath=checkpoint_filepath, save_best_only=True, save_weights_only=True, verbose=True,
+                             monitor='val_acc', mode='max')
 
-logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
-                                        histogram_freq=1,
-                                        profile_batch='500,520')
+# logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
+#                                         histogram_freq=1,
+#                                         profile_batch='500,520')
 
-model.fit(train_dataset, validation_data=val_dataset, epochs=10,
+# model.fit(train_dataset, validation_data=val_dataset, epochs=20,
+#           steps_per_epoch=len(train_df) // batch_size // 4,
+#           validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint])
+model.load_weights(checkpoint_filepath)
+
+"""
+"fine-tuning" the weights of the top layers of the pretrained models alongside the training of the top-level classifier
+"""
+from tensorflow.keras.optimizers import SGD
+
+unfreeze = False
+
+for model_name, model in zip(['_a', '_b', '_c'], [pretrained_modela, pretrained_modelb, pretrained_modelc]):
+    # Unfreeze all models after "mixed6"
+    for layer in model.layers:
+        if unfreeze:
+            layer.trainable = True
+        if layer.name == 'mixed6' + model_name:
+            print('unfreezing ', layer.name)
+            unfreeze = True
+
+# As an optimizer, here we will use SGD
+# with a very low learning rate (0.00001)
+model.compile(loss='binary_crossentropy',
+              optimizer=SGD(
+                  lr=0.00001,
+                  momentum=0.9),
+              metrics=['acc'])
+
+checkpoint_filepath2 = 'models/checkpoint2.hdf5'
+checkpoint = ModelCheckpoint(filepath=checkpoint_filepath, save_best_only=True, save_weights_only=True, verbose=True,
+                             monitor='val_acc', mode='max')
+
+model.fit(train_dataset, validation_data=val_dataset, epochs=100,
           steps_per_epoch=len(train_df) // batch_size // 4,
-          validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint])
+          validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint],
+          verbose=2)
+
 model.evaluate_generator(val_dataset, verbose=1)
