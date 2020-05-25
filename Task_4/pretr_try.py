@@ -182,14 +182,15 @@ from tensorflow.keras.optimizers import SGD
 
 unfreeze = False
 
-for model_name, model in zip(['_a', '_b', '_c'], [pretrained_modela, pretrained_modelb, pretrained_modelc]):
-    # Unfreeze all models after "mixed6"
-    for layer in model.layers:
-        if unfreeze:
-            layer.trainable = True
-        if layer.name == 'mixed6' + model_name:
-            print('unfreezing ', layer.name)
-            unfreeze = True
+for layer in model.layers:
+    if unfreeze and not layer.name == 'flatten':
+        layer.trainable = True
+        print('set_to_trainable :', layer.name)
+
+    if layer.name.startswith('mixed6'):
+        unfreeze = True
+    if layer.name == 'flatten':
+        unfreeze = False
 
 # As an optimizer, here we will use SGD
 # with a very low learning rate (0.00001)
