@@ -1,16 +1,9 @@
-import pandas as pd
 import os
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.utils import Sequence
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+import pickle
 import numpy as np
+import pandas as pd
 from skimage.io import imread
 from skimage.transform import resize
-from matplotlib import pyplot as plt
-import tensorflow as tf
-from sklearn.utils import shuffle
-import pickle
-import os
 from tqdm import tqdm
 
 

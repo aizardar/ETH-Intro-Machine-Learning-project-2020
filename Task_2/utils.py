@@ -123,7 +123,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                                              patience=10,
                                              mode='min',
                                              restore_best_weights=True)
-    #todo
+    # todo
     # callbacks = [CB_lr, CB_es]
     callbacks = [CB_lr]
 
@@ -166,7 +166,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
             direction="max"),
                              max_trials=params['tuner_trials'],
                              project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
-                                                                            params['task'], params['uid']))
+                                                                               params['task'], params['uid']))
         tuner.search_space_summary()
         tuner.search(train_dataset, validation_data=val_dataset, epochs=epochs,
                      steps_per_epoch=len(x_train) // params['batch_size'],

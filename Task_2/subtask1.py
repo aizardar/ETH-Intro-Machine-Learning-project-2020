@@ -28,9 +28,8 @@ Questions:
 test = False
 seed = 1
 num_subjects = -1  # number of subjects out of 18995
-epochs = 100
+epochs = 5
 tuner_trials = 50
-# Todo collapse persons over time to find outlayers?
 
 search_space_dict_task1 = {
     'nan_handling': ['minusone', 'iterative'],
@@ -90,7 +89,7 @@ search_space_dict_task3 = {
     # 'nan_handling': ['iterative', 'minusone', 'mean'],
     'nan_handling': ['minusone'],
     'task3_activation': ['linear'],
-    'standardizer': ['RobustScaler', 'minmax'],
+    'standardizer': ['RobustScaler'],
     # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
     'model': ['threelayers'],
     'batch_size': [2048],
@@ -109,7 +108,7 @@ search_space_dict_lin = {
     'nan_handling': ['iterative', 'minusone', 'mean'],
     # 'nan_handling': ['minusone'],
     'task3_activation': [None],
-    'standardizer': ['RobustScaler', 'minmax'],
+    'standardizer': ['none'],
     # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
     'model': ['lin_reg'],
     'batch_size': [None],
@@ -386,7 +385,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     return test_score1, test_score2, test_score3, test_score12
 
 
-for search_space_dict in [search_space_dict_lin]:
+for search_space_dict in [search_space_dict_task3]:
 
     if not os.path.isfile('temp/params_results.csv'):
         columns = [key for key in search_space_dict.keys()]
