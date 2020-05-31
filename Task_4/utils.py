@@ -1,19 +1,19 @@
 import os
 import pickle
-
 import numpy as np
 from matplotlib import pyplot as plt
 from skimage.io import imread
 from skimage.transform import resize
 from tensorflow.keras import layers
-from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import Sequence
 
 
+# todo do I need to run Inception.preprocess?
 class train_dataset_preprocessed(Sequence):
-    def __init__(self, set, batches_save_path, dataset_type, batch_size=64, shape=(64, 64)):
+    def __init__(self, set, batches_save_path, dataset_type, batch_size=64, shape=(64, 64), save_dir='results'):
         """
         set is a dataframe
         """
@@ -23,6 +23,7 @@ class train_dataset_preprocessed(Sequence):
         self.done = False
         self.dataset_type = dataset_type
         self.batches_save_path = batches_save_path
+        self.save_dir = save_dir
 
     def __len__(self):
         return int(np.ceil(len(self.set) / float(self.batch_size)))
@@ -38,8 +39,6 @@ class train_dataset_preprocessed(Sequence):
             y_batch = pickle.load(fp)
 
         if not self.done:
-            if not os.path.exists('temp'):
-                os.mkdir('temp')
             plt.figure(figsize=(10, 40))
             img_idx = 1
             for i in range(10):
@@ -56,13 +55,13 @@ class train_dataset_preprocessed(Sequence):
                 plt.axis('off')
                 plt.imshow(x_batch[2][i])
                 img_idx += 1
-            plt.savefig('temp/vis')
+            plt.savefig(os.path.join(self.save_dir, 'vis'))
             self.done = True
         return x_batch, y_batch
 
 
 class train_dataset_notpeprocessed(Sequence):
-    def __init__(self, set, batch_size=64, shape=(64, 64)):
+    def __init__(self, set, batch_size=64, shape=(64, 64), save_dir='results', with_keras_preprocessing=True):
         """
         set is a dataframe
         """
@@ -70,6 +69,8 @@ class train_dataset_notpeprocessed(Sequence):
         self.batch_size = batch_size
         self.shape = shape
         self.done = False
+        self.save_dir = save_dir
+        self.with_keras_preprocessing = with_keras_preprocessing
 
     def __len__(self):
         return int(np.ceil(len(self.set) / float(self.batch_size)))
@@ -77,24 +78,40 @@ class train_dataset_notpeprocessed(Sequence):
     def __getitem__(self, idx):
         x_batch = self.set.iloc[:, :-1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
         y_batch = self.set.iloc[:, -1].values[idx * self.batch_size:(idx + 1) * self.batch_size]
-        x, y = [np.array(
-            [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[0]))), self.shape) for
-             file_names in x_batch]), np.array(
-            [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[1]))), self.shape) for
-             file_names in x_batch]), np.array(
-            [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[2]))), self.shape) for
-             file_names in x_batch])], y_batch
+        if self.with_keras_preprocessing:
+            x, y = [np.array(
+                [preprocess_input(resize(imread(os.path.join('food', '{}.jpg'.format(file_names[0]))), self.shape)*255) for
+                 file_names in x_batch]), np.array(
+                [preprocess_input(resize(imread(os.path.join('food', '{}.jpg'.format(file_names[1]))), self.shape)*255) for
+                 file_names in x_batch]), np.array(
+                [preprocess_input(resize(imread(os.path.join('food', '{}.jpg'.format(file_names[2]))), self.shape)*255) for
+                 file_names in x_batch])], y_batch
+        else:
+            x, y = [np.array(
+                [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[0]))), self.shape) for
+                 file_names in x_batch]), np.array(
+                [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[1]))), self.shape) for
+                 file_names in x_batch]), np.array(
+                [resize(imread(os.path.join('food', '{}.jpg'.format(file_names[2]))), self.shape) for
+                 file_names in x_batch])], y_batch
         if not self.done:
-            plt.subplot(1, 3, 1)
-            plt.axis('off')
-            plt.imshow(x[0][0])
-            plt.subplot(1, 3, 2)
-            plt.axis('off')
-            plt.imshow(x[1][0])
-            plt.subplot(1, 3, 3)
-            plt.axis('off')
-            plt.imshow(x[2][0])
-            plt.savefig('temp/vis')
+            plt.figure(figsize=(10, 40))
+            img_idx = 1
+            for i in range(10):
+                plt.subplot(10, 3, img_idx)
+                plt.axis('off')
+                plt.title(str(y_batch[i]))
+                plt.imshow(x[0][i]*255)
+                img_idx += 1
+                plt.subplot(10, 3, img_idx)
+                plt.axis('off')
+                plt.imshow(x[1][i]*255)
+                img_idx += 1
+                plt.subplot(10, 3, img_idx)
+                plt.axis('off')
+                plt.imshow(x[2][i]*255)
+                img_idx += 1
+            plt.savefig(os.path.join(self.save_dir, 'vis'))
             self.done = True
         return x, y
 

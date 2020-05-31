@@ -161,7 +161,7 @@ model = Model(inputs=[inputa, inputb], outputs=x)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # # Loads the weights
-# model.load_weights('models/saved_model.pb')
+# model.load_weights('results/saved_model.pb')
 #
 # # Re-evaluate the model
 # loss,acc = model.evaluate(test_images,  test_labels, verbose=2)

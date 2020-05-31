@@ -47,8 +47,8 @@ for ind in range(5):
     lasso_alphas = list(np.linspace(lasso_alphas_range[0], lasso_alphas_range[1], 1000))
     print(lasso_alphas)
     for i in range(len(lasso_alphas)):
-        # models.append(Ridge(alpha = alphas[i], fit_intercept=False, normalize = normalize, max_iter= 1000000))
-        # models.append(ElasticNet(alpha= alphas[i], l1_ratio= 0.5, fit_intercept=False, normalize= normalize))
+        # results.append(Ridge(alpha = alphas[i], fit_intercept=False, normalize = normalize, max_iter= 1000000))
+        # results.append(ElasticNet(alpha= alphas[i], l1_ratio= 0.5, fit_intercept=False, normalize= normalize))
         models.append(Lasso(alpha=lasso_alphas[i], fit_intercept=False, normalize= normalize, max_iter= 1000000))
     RMSES_val = []
     RMSES_train = []
