@@ -48,7 +48,8 @@ df = df.append(df_)
 df = shuffle(df)
 # train_df, test_df = train_test_split(df, test_size=0.2, shuffle=True)
 train_df, val_df = train_test_split(df, test_size=0.3, shuffle=True)
-
+train_df.to_csv('models/train_df.csv', index=False)
+val_df.to_csv('models/val_df.csv', index=False)
 
 if use_preprocessed:
     if os.path.exists('/mnt/larry1/task_4_batches/'):
@@ -91,9 +92,9 @@ checkpoint_filepath = 'models/checkpoint.hdf5'
 checkpoint = ModelCheckpoint(filepath=checkpoint_filepath, save_best_only=True, save_weights_only=True, verbose=True,
                              monitor='val_acc', mode='max')
 
-# logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
-#                                         histogram_freq=1,
-#                                         profile_batch='500,520')
+logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
+                                        histogram_freq=1,
+                                        profile_batch='500,520')
 
 model.fit(train_dataset, validation_data=val_dataset, epochs=20,
           steps_per_epoch=len(train_df) // batch_size // 4,

@@ -63,7 +63,7 @@ model.compile(loss='binary_crossentropy',
               optimizer=RMSprop(lr=0.0001),
               metrics=['acc'])
 
-model.load_weights('models/checkpoint.hdf5')
+model.load_weights('models/checkpoint2.hdf5')
 for index, row in tqdm(df_test.iterrows()):
     images = [np.expand_dims(resize(imread(os.path.join('food', '{}.jpg'.format(row[col]))), input_shape), 0) for
               col in ['A', 'B', 'C']]
