@@ -6,12 +6,12 @@ from sklearn.model_selection import train_test_split, ParameterGrid
 from matplotlib import pyplot as plt
 import sklearn.metrics as metrics
 import os
-import utils
+from .utils import handle_nans, scaling, train_model, impute_NN
 import functools, operator
-from models import dice_coef_loss
+from .models import dice_coef_loss
 from tqdm import tqdm
 import random
-import score_submission
+from .score_submission import get_score
 import uuid
 
 """
@@ -134,7 +134,7 @@ X_final_df = pd.read_csv('test_features.csv')
 
 def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     print('\n', params)
-
+    # splitting the data into train and test
     y_train_df, y_test_df = train_test_split(y_train_df, test_size=0.2, random_state=seed)
     X_train_df, X_test_df = [X_train_df.merge(y_train_df, on='pid')[X_train_df.columns],
                              X_train_df.merge(y_test_df, on='pid')[X_train_df.columns]]
@@ -148,14 +148,14 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         X_final_df = pd.read_csv(x_final_path)
         X_test_df = pd.read_csv(x_test_path)
     else:
-        X_train_df, imp = utils.handle_nans(X_train_df, params, seed)
+        X_train_df, imp = handle_nans(X_train_df, params, seed)
         X_train_df.to_csv(train_path, index=False)
         if not params['nan_handling'] in ['zero', 'minusone']:
             X_final_df = pd.DataFrame(data=imp.transform(X_final_df), columns=X_final_df.columns)
             X_test_df = pd.DataFrame(data=imp.transform(X_test_df), columns=X_test_df.columns)
         else:
-            X_final_df, _ = utils.handle_nans(X_final_df, params, seed)
-            X_test_df, _ = utils.handle_nans(X_test_df, params, seed)
+            X_final_df, _ = handle_nans(X_final_df, params, seed)
+            X_test_df, _ = handle_nans(X_test_df, params, seed)
         X_final_df.to_csv(x_final_path, index=False)
         X_test_df.to_csv(x_test_path, index=False)
 
@@ -190,9 +190,9 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         input_shape = x_train[0].shape
 
     if not params['standardizer'] == 'none':
-        x_train, scaler = utils.scaling(x_train, params)
-        x_test, _ = utils.scaling(x_test, params, scaler)
-        x_final, _ = utils.scaling(x_final, params, scaler)
+        x_train, scaler =scaling(x_train, params)
+        x_test, _ =scaling(x_test, params, scaler)
+        x_final, _ =scaling(x_final, params, scaler)
     else:
         x_scaler = None
 
@@ -218,7 +218,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         loss = params['task1_loss']
         if loss == 'dice':
             loss = dice_coef_loss
-        model1 = utils.train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, params['task'],
+        model1 =train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, params['task'],
                                    y_train_df)
 
     if params['task'] == 2:
@@ -226,7 +226,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         if loss == 'dice':
             loss = dice_coef_loss
         print('\n\n**** Training model2 **** \n\n')
-        model2 = utils.train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, 2,
+        model2 = train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, 2,
                                    y_train_df)
 
     if params['task'] == 3:
@@ -236,7 +236,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         elif loss == 'huber':
             loss = 'huber_loss'
         print('\n\n**** Training model3 **** \n\n')
-        model3 = utils.train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, 3,
+        model3 = train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, 3,
                                    y_train_df)
 
     if params['model'] == 'resnet' or params['model'] == 'simple_conv_model':
@@ -264,7 +264,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         for col in test_prediction_df.columns:
             test_df[col] = test_prediction_df[col]
         test_df.reindex(columns=sample.columns)
-        test_score12 = score_submission.get_score(y_test_df, test_df)[0][0]
+        test_score12 = get_score(y_test_df, test_df)[0][0]
 
     if params['task'] == 12 and (not params_results_df['task12'].values.tolist() or np.isnan(np.max(
             params_results_df['task12'].values.tolist()))) or test_score12 > np.max(
@@ -294,7 +294,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         for col in test_prediction_df.columns:
             test_df[col] = test_prediction_df[col]
         test_df.reindex(columns=sample.columns)
-        test_score1 = score_submission.get_score(y_test_df, test_df)[0][0]
+        test_score1 = get_score(y_test_df, test_df)[0][0]
 
     if params['task'] == 1 and (not params_results_df['task1'].values.tolist() or np.isnan(np.max(
             params_results_df['task1'].values.tolist())) or test_score1 > np.max(
@@ -323,7 +323,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         for col in test_prediction_df.columns:
             test_df[col] = test_prediction_df[col]
         test_df.reindex(columns=sample.columns)
-        test_score2 = score_submission.get_score(y_test_df, test_df)[0][1]
+        test_score2 = get_score(y_test_df, test_df)[0][1]
 
     if params['task'] == 2 and (not params_results_df['task2'].values.tolist() or np.isnan(np.max(
             params_results_df['task2'].values.tolist())) or test_score2 > np.max(
@@ -356,7 +356,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         for col in test_prediction_df.columns:
             test_df[col] = test_prediction_df[col]
         test_df.reindex(columns=sample.columns)
-        test_score3 = score_submission.get_score(y_test_df, test_df)[0][2]
+        test_score3 = get_score(y_test_df, test_df)[0][2]
 
     if params['task'] == 3 and (not params_results_df['task3'].values.tolist() or np.isnan(np.max(
             params_results_df['task3'].values.tolist())) or test_score3 > np.max(
@@ -414,9 +414,9 @@ for search_space_dict in [search_space_dict_task3]:
                 if not os.path.isdir('imputed_data'):
                     os.mkdir('imputed_data')
                 if not os.path.isfile('imputed_data/xtrain_imputedNN{}.csv'.format(num_subjects)):
-                    X_train_df = utils.impute_NN(X_train_df)
+                    X_train_df = impute_NN(X_train_df)
                     X_train_df.to_csv('imputed_data/xtrain_imputedNN{}.csv'.format(num_subjects), index=False)
-                    X_final_df = utils.impute_NN(X_final_df)
+                    X_final_df = impute_NN(X_final_df)
                     X_final_df.to_csv('imputed_data/xtest_imputedNN{}.csv'.format(num_subjects), index=False)
                 else:
                     X_train_df = pd.read_csv('imputed_data/xtrain_imputedNN{}.csv'.format(num_subjects))
