@@ -2,8 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from .utils import train_dataset_preprocessed, train_dataset_notpeprocessed, pretr_inception
-from .preprocess import store_batches
+from utils import train_dataset_preprocessed, train_dataset_notpeprocessed, pretr_inception
+from preprocess import store_batches
 from skimage.io import imread
 from skimage.transform import resize
 from tensorflow.keras.optimizers import SGD

@@ -21,15 +21,15 @@ train_labels = pd.read_csv("train_labels.csv").sort_values(by='pid')
 
 # Let's get rid of Hgb, HCO3, ABPd, and Bilirubin_direct from the training and test data !
 
-# train_features.drop('Bilirubin_direct', axis=1, inplace=True)
-# train_features.drop('HCO3', axis=1, inplace=True)
-# train_features.drop('Hgb', axis=1, inplace=True)
-# train_features.drop('ABPd', axis=1, inplace=True)
+train_features.drop('Bilirubin_direct', axis=1, inplace=True)
+train_features.drop('HCO3', axis=1, inplace=True)
+train_features.drop('Hgb', axis=1, inplace=True)
+train_features.drop('ABPd', axis=1, inplace=True)
 
-# test.drop('Bilirubin_direct', axis=1, inplace=True)
-# test.drop('HCO3', axis=1, inplace=True)
-# test.drop('Hgb', axis=1, inplace=True)
-# test.drop('ABPd', axis=1, inplace=True) 
+test.drop('Bilirubin_direct', axis=1, inplace=True)
+test.drop('HCO3', axis=1, inplace=True)
+test.drop('Hgb', axis=1, inplace=True)
+test.drop('ABPd', axis=1, inplace=True)
 
 
 # In[ ]:
@@ -79,17 +79,17 @@ def impute_KNN(df):
 if not os.path.exists('imputed_data/new_train_features_imp.csv'):
     print("Imputing training data")
 
-    train_features_imp = impute_KNN(train_features)
+    train_features_imp_ = impute_KNN(train_features)
     print("Imputing test data")
 
     test_imputed = impute_KNN(test)
 
     print("###############################")
 
+    # split into train and test set
     train_labels, val_labels = train_test_split(train_labels, test_size=0.2)
-    train_features_imp, val_features_imp = [
-        train_features_imp.merge(train_labels, on='pid')[train_features_imp.columns],
-        train_features_imp.merge(val_labels, on='pid')[train_features_imp.columns]]
+    train_features_imp = train_features_imp_.merge(train_labels, on='pid')[train_features_imp_.columns]
+    val_features_imp = train_features_imp_.merge(val_labels, on='pid')[train_features_imp_.columns]
 
 
     # In[ ]:

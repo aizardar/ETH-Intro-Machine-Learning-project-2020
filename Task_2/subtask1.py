@@ -190,9 +190,9 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         input_shape = x_train[0].shape
 
     if not params['standardizer'] == 'none':
-        x_train, scaler =scaling(x_train, params)
-        x_test, _ =scaling(x_test, params, scaler)
-        x_final, _ =scaling(x_final, params, scaler)
+        x_train, scaler = scaling(x_train, params)
+        x_test, _ = scaling(x_test, params, scaler)
+        x_final, _ = scaling(x_final, params, scaler)
     else:
         x_scaler = None
 
@@ -218,8 +218,8 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
         loss = params['task1_loss']
         if loss == 'dice':
             loss = dice_coef_loss
-        model1 =train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, params['task'],
-                                   y_train_df)
+        model1 = train_model(params, input_shape, x_train, y_train1, loss, epochs, seed, params['task'],
+                             y_train_df)
 
     if params['task'] == 2:
         loss = params['task2_loss']
@@ -227,7 +227,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
             loss = dice_coef_loss
         print('\n\n**** Training model2 **** \n\n')
         model2 = train_model(params, input_shape, x_train, y_train2, loss, epochs, seed, 2,
-                                   y_train_df)
+                             y_train_df)
 
     if params['task'] == 3:
         loss = params['task3_loss']
@@ -237,7 +237,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
             loss = 'huber_loss'
         print('\n\n**** Training model3 **** \n\n')
         model3 = train_model(params, input_shape, x_train, y_train3, loss, epochs, seed, 3,
-                                   y_train_df)
+                             y_train_df)
 
     if params['model'] == 'resnet' or params['model'] == 'simple_conv_model':
         x_final = np.expand_dims(x_final, -1)
@@ -386,6 +386,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
 
 for search_space_dict in [search_space_dict_task3]:
+    #lood over search spaces
 
     if not os.path.isfile('temp/params_results.csv'):
         columns = [key for key in search_space_dict.keys()]
