@@ -131,16 +131,32 @@ for parameters in list(ParameterGrid(search_space_dict)):
                                             histogram_freq=1,
                                             profile_batch='500,520')
 
-    model.fit(train_dataset, validation_data=val_dataset, epochs=20,
+    model.fit(train_dataset, validation_data=val_dataset, epochs=100,
               steps_per_epoch=len(train_df) // batch_size // 4,
               validation_steps=len(val_df) // batch_size // 4, shuffle=True, callbacks=[early_stopper, checkpoint])
     model.load_weights(checkpoint_filepath)
     print('*****\n\n\n evaluation before fine-tuning \n\n\n*****')
-    model.evaluate_generator(val_dataset, verbose=1)
+
+    eval1 = model.evaluate_generator(val_dataset, verbose=1)
+    print('eval1: ', eval1)
+    experiment_scores['val_acc1'] = eval1[-1]
+    print('\n*****\n\n\n predicting on test set with not fined tuned model\n\n\n*****\n')
+    df_test = pd.read_csv('test_triplets.txt', sep=' ', names=['A', 'B', 'C'],
+                          dtype='str')
+    for index, row in tqdm(df_test.iterrows()):
+        images = [np.expand_dims(resize(imread(os.path.join('food', '{}.jpg'.format(row[col]))), input_shape), 0) for
+                  col in ['A', 'B', 'C']]
+        df_test.at[index, 'label'] = int(np.round(model.predict(images), 0))
+
+    df_test.to_csv(os.path.join(save_dir, 'prediction1.csv'), index=False)
+    df_pred = df_test[['label']].astype(int)
+    df_pred.to_csv(os.path.join(save_dir, 'prediction1.txt'), header=None, index=None, sep=' ', mode='a')
+
     # %%
     """
     "fine-tuning" the weights of the top layers of the pretrained results alongside the training of the top-level classifier
     """
+    print('*****\n\n\n start fine-tuning \n\n\n*****')
 
     unfreeze = False
 
@@ -170,9 +186,9 @@ for parameters in list(ParameterGrid(search_space_dict)):
               verbose=1)
     model.load_weights(checkpoint_filepath2)
     print('\n*****\n\n\n evaluation after fine-tuning \n\n\n*****\n')
-    eval = model.evaluate_generator(val_dataset, verbose=1)
-    print(eval)
-    experiment_scores['val_acc'] = eval[3]
+    eval2 = model.evaluate_generator(val_dataset, verbose=1)
+    print(eval2)
+    experiment_scores['val_acc2'] = eval2[-1]
     if not os.path.exists('experiment_scores.csv'):
         experiment_scores.to_csv('experiment_scores.csv', index=False)
     else:
@@ -189,6 +205,6 @@ for parameters in list(ParameterGrid(search_space_dict)):
                   col in ['A', 'B', 'C']]
         df_test.at[index, 'label'] = int(np.round(model.predict(images), 0))
 
-    df_test.to_csv(os.path.join(save_dir, 'prediction.csv'), index=False)
+    df_test.to_csv(os.path.join(save_dir, 'prediction2.csv'), index=False)
     df_pred = df_test[['label']].astype(int)
-    df_pred.to_csv(os.path.join(save_dir, 'prediction.txt'), header=None, index=None, sep=' ', mode='a')
+    df_pred.to_csv(os.path.join(save_dir, 'prediction2.txt'), header=None, index=None, sep=' ', mode='a')
