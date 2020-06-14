@@ -1,0 +1,19 @@
+
+INTRODUCTION
+
+Proteins are large molecules. Their blueprints are encoded in the DNA of biological organisms. 
+Each protein consists of many amino acids: for example, our protein of interest consists of a little less than 400 amino acids.
+Once the protein is created (synthesized), it folds into a 3D structure.
+The mutations influence what amino acids make up the protein, and hence have an effect on its shape.
+
+
+The goal of this task is to classify mutations of a human antibody protein into active (1) and inactive (0) based on the 
+provided mutation information. Under active mutations the protein retains its original function, and inactive mutation cause 
+the protein to lose its function. The mutations differ from each other by 4 amino acids in 4 respective sites. 
+The sites or locations of the mutations are fixed. The amino acids at the 4 mutation sites are given as 4-letter combinations, 
+where each letter denotes the amino acid at the corresponding mutation site. Amino acids at other places are kept the same and 
+are not provided.
+
+For example, FCDI corresponds to amino acid F (Phenylanine) being in the first site, amino acid C (Cysteine) being in the 
+second site and so on. The biological and chemical aspects can be abstracted to solve this task.
+

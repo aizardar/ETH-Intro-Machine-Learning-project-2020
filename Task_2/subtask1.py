@@ -6,12 +6,12 @@ from sklearn.model_selection import train_test_split, ParameterGrid
 from matplotlib import pyplot as plt
 import sklearn.metrics as metrics
 import os
-from .utils import handle_nans, scaling, train_model, impute_NN
+from utils import handle_nans, scaling, train_model, impute_NN
 import functools, operator
-from .models import dice_coef_loss
+from models import dice_coef_loss
 from tqdm import tqdm
 import random
-from .score_submission import get_score
+from score_submission import get_score
 import uuid
 
 """
@@ -51,7 +51,7 @@ search_space_dict_task12 = {
     'nan_handling': ['mean', 'minusone', 'iterative'],
     'standardizer': ['RobustScaler', 'minmax'],
     # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
-    'model': ['lstm'],
+    'model': ['threelayers'],
     'output_layer': ['sigmoid', 'softmax'],
     'batch_size': [2048],
     'impute_nn': ['yes'],
@@ -109,8 +109,8 @@ search_space_dict_lin = {
     # 'nan_handling': ['minusone'],
     'task3_activation': [None],
     'standardizer': ['none'],
-    # 'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
-    'model': ['lin_reg'],
+    'model': ['simple_conv_model', 'dense_model', 'threelayers', 'recurrent_net'],
+    # 'model': ['lin_reg'],
     'batch_size': [None],
     'impute_nn': ['yes', 'no'],
     'epochs': [None],
@@ -136,8 +136,10 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
     print('\n', params)
     # splitting the data into train and test
     y_train_df, y_test_df = train_test_split(y_train_df, test_size=0.2, random_state=seed)
-    X_train_df, X_test_df = [X_train_df.merge(y_train_df, on='pid')[X_train_df.columns],
-                             X_train_df.merge(y_test_df, on='pid')[X_train_df.columns]]
+    X_train_df, X_test_df = [X_train_df.merge(y_train_df, on='pid')[X_train_df.columns].sort_values(by='pid'),
+                             X_train_df.merge(y_test_df, on='pid')[X_train_df.columns].sort_values(by='pid')]
+    y_train_df = y_train_df.sort_values(by='pid')
+    y_test_df = y_test_df.sort_values(by='pid')
 
     train_path = 'nan_handling/train{}_{}.csv'.format(num_subjects, params['nan_handling'])
     x_final_path = 'nan_handling/final{}_{}.csv'.format(num_subjects, params['nan_handling'])
@@ -386,7 +388,7 @@ def test_model(params, X_train_df, y_train_df, X_final_df, params_results_df):
 
 
 for search_space_dict in [search_space_dict_task3]:
-    #lood over search spaces
+    # lood over search spaces
 
     if not os.path.isfile('temp/params_results.csv'):
         columns = [key for key in search_space_dict.keys()]

@@ -8,7 +8,21 @@ TESTS = ['LABEL_BaseExcess', 'LABEL_Fibrinogen', 'LABEL_AST', 'LABEL_Alkalinepho
          'LABEL_Bilirubin_direct', 'LABEL_EtCO2']
 
 
-def get_score(df_true, df_submission):
+def get_score(df_true, df_submission, task):
+    df_submission = df_submission.sort_values('pid')
+    df_true = df_true.sort_values('pid')
+    if task == 1:
+        task1 = np.mean([metrics.roc_auc_score(df_true[entry], df_submission[entry]) for entry in TESTS])
+        return task1
+    if task == 2:
+        task2 = metrics.roc_auc_score(df_true['LABEL_Sepsis'], df_submission['LABEL_Sepsis'])
+        return task2
+    if task == 3:
+        task3 = np.mean(
+            [0.5 + 0.5 * np.maximum(0, metrics.r2_score(df_true[entry], df_submission[entry])) for entry in VITALS])
+        return task3
+
+def get_all_scores(df_true, df_submission):
     df_submission = df_submission.sort_values('pid')
     df_true = df_true.sort_values('pid')
     task1 = np.mean([metrics.roc_auc_score(df_true[entry], df_submission[entry]) for entry in TESTS])
@@ -17,7 +31,6 @@ def get_score(df_true, df_submission):
     score = np.mean([task1, task2, task3])
     print(task1, task2, task3)
     return score
-
 
 if __name__ == '__main__':
     filename = 'sample.zip'

@@ -7,7 +7,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.applications.inception_v3 import InceptionV3
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.optimizers import RMSprop, SGD
 from tqdm import tqdm
 
 df_test = pd.read_csv('test_triplets.txt', sep=' ', names=['A', 'B', 'C'],
@@ -60,15 +60,17 @@ x = layers.Dense(1, activation='sigmoid')(x)
 # Configure and compile the model
 model = Model([inputa, inputb, inputc], x)
 model.compile(loss='binary_crossentropy',
-              optimizer=RMSprop(lr=0.0001),
+              optimizer=SGD(
+                  lr=0.0001,
+                  momentum=0.9),
               metrics=['acc'])
 
-model.load_weights('results/checkpoint2.hdf5')
-for index, row in tqdm(df_test.iterrows()):
+model.load_weights('/home/hendrik/src/IML_project_2020_ETH/checkpoint.hdf5')
+for index, row in tqdm(df_test.iterrows(), total=len(df_test)):
     images = [np.expand_dims(resize(imread(os.path.join('food', '{}.jpg'.format(row[col]))), input_shape), 0) for
               col in ['A', 'B', 'C']]
     df_test.at[index, 'label'] = int(np.round(model.predict(images), 0))
 
-df_test.to_csv('prediction.csv', index=False)
+df_test.to_csv('/home/hendrik/src/IML_project_2020_ETH/prediction.csv', index=False)
 df_pred = df_test[['label']].astype(int)
-df_pred.to_csv('prediction.txt', header=None, index=None, sep=' ', mode='a')
+df_pred.to_csv('/home/hendrik/src/IML_project_2020_ETH/prediction.txt', header=None, index=None, sep=' ', mode='a')

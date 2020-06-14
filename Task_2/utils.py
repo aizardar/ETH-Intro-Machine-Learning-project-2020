@@ -11,6 +11,92 @@ from sklearn import preprocessing
 from sklearn.linear_model import LinearRegression, HuberRegressor
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+import pandas as pd
+import uuid
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, RandomForestRegressor
+
+
+class ExperimentLogger():
+    def __init__(self, params, task, save_path):
+        self.params = params
+        self.df = pd.DataFrame([params])
+        self.task = task
+        self.uid = self.create_uid()
+        # self.df['uid'] = uuid.uuid4().hex
+        self.save_path = save_path
+        self.previous_results = self.load_previous_results()
+        if (not self.previous_results_empty) and self.uid in self.previous_results['uid'].values:
+            self.already_tried = True
+        else:
+            self.df['uid'] = self.uid
+            self.already_tried = False
+
+    def create_uid(self):
+        values = self.df.iloc[0].values.tolist()
+        uid = ''
+        for elem in values:
+            uid += str(elem)
+        return uid
+
+    def save(self):
+        if not os.path.exists(os.path.join(self.save_path, f'experiment_logs{self.task}.csv')):
+            self.df.to_csv(os.path.join(self.save_path, f'experiment_logs{self.task}.csv'), index=False)
+        else:
+            experiment_logs = pd.read_csv(os.path.join(self.save_path, f'experiment_logs{self.task}.csv'))
+            experiment_logs = pd.concat([experiment_logs, self.df])
+            experiment_logs.to_csv(os.path.join(self.save_path, f'experiment_logs{self.task}.csv'), index=False)
+
+    def load_previous_results(self):
+        if os.path.exists(os.path.join(self.save_path, f'experiment_logs{self.task}.csv')):
+            self.previous_results_empty = False
+            return pd.read_csv(os.path.join(self.save_path, f'experiment_logs{self.task}.csv'))
+        else:
+            self.previous_results_empty = True
+            return 'empty'
+
+
+def get_model(params):
+    if params['model'] == 'random_forest_cl':
+        model = RandomForestClassifier()
+        param_grid = {
+            'n_estimators': np.linspace(100, 800, 4, dtype=int),
+            'max_features': ['auto', 'log2', None],
+            'criterion': ['gini', 'entropy']}
+    elif params['model'] == 'grad_boosting':
+        model = GradientBoostingClassifier()
+        param_grid = {
+            'n_estimators': np.linspace(100, 800, 4, dtype=int),
+            'max_features': ['auto', 'log2', None],
+            'criterion': ['gini', 'entropy']}
+    elif params['model'] == 'random_forest_reg':
+        param_grid = {
+            'n_estimators': np.linspace(100, 800, 4, dtype=int),
+            'max_features': ['auto', 'log2', None],
+            'criterion': ['mse', 'mae']}
+        model = RandomForestRegressor()
+    elif params['model'] == 'lin_reg':
+        param_grid = {
+            'normalize': [True, False],
+            'fit_intercept': [True, False],
+        }
+        model = LinearRegression()
+    elif params['model'] == 'huber_reg':
+        param_grid = {
+            'epsilon': np.linspace(1.0, 3, 5),
+            'alpha': np.linspace(0.00001, 0.1, 5),
+            'fit_intercept': [True, False],
+        }
+        model = HuberRegressor()
+
+    return model, param_grid
+
+
+
+
+def mkdir(path):
+    if not os.path.exists(path):
+        print('creating dir ', path)
+        os.makedirs(path)
 
 
 def remove_outliers(x_train, y_train):

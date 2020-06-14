@@ -31,10 +31,10 @@ search_space_dict = {
     'optimizer2': [SGD(
         lr=0.00001,
         momentum=0.9)],
-    'ABC_combinations': ['all'],  # other cases not implemented yet
+    'ABC_combinations': ['all', 'swap_bc'],  # other cases not implemented yet
 }
 for parameters in list(ParameterGrid(search_space_dict)):
-
+    print(parameters)
     parameters['save_dir'] = 'results/{}_{}'.format(parameters['date'], parameters['uid'])
     experiment_scores = pd.DataFrame([[]])
     for key, value in zip(parameters.keys(), parameters.values()):
@@ -52,34 +52,52 @@ for parameters in list(ParameterGrid(search_space_dict)):
 
     df = pd.read_csv(file, sep=' ', names=['A', 'B', 'C'],
                      dtype='str')
-    df['label'] = 1
+    # split into train and val set first to make sure there is no overlap of images in train and val set
+    train_df, val_df = train_test_split(df, test_size=0.3, shuffle=True)
+    if os.path.exists('train_set.txt'):
+        os.remove('train_set.txt')
+    train_df.to_csv('train_set.txt', header=None, index=None, sep=' ', mode='a')
+    if os.path.exists('val_set.txt'):
+        os.remove('val_set.txt')
+    val_df.to_csv('val_set.txt', header=None, index=None, sep=' ', mode='a')
 
-    if parameters['ABC_combinations'] == 'all':
+    train_df = pd.read_csv('train_set.txt', sep=' ', names=['A', 'B', 'C'],
+                           dtype='str')
+    train_df['label'] = 1
+    val_df = pd.read_csv('val_set.txt', sep=' ', names=['A', 'B', 'C'],
+                         dtype='str')
+    val_df['label'] = 1
+
+    for split, file in zip([train_df, val_df], ['train_set.txt', 'val_set.txt']):
+        print(split.shape, file)
         df_ = pd.read_csv(file, sep=' ', names=['A', 'C', 'B'],
                           dtype='str')
         df_['label'] = 0
+        split = split.append(df_)
 
-        df = df.append(df_)
+        if parameters['ABC_combinations'] == 'all':
+            df_ = pd.read_csv(file, sep=' ', names=['B', 'A', 'C'],
+                              dtype='str')
+            df_['label'] = 1
 
-        df_ = pd.read_csv(file, sep=' ', names=['B', 'A', 'C'],
-                          dtype='str')
-        df_['label'] = 1
+            split = split.append(df_)
 
-        df = df.append(df_)
+            df_ = pd.read_csv(file, sep=' ', names=['B', 'C', 'A'],
+                              dtype='str')
+            df_['label'] = 0
 
-        df_ = pd.read_csv(file, sep=' ', names=['B', 'C', 'A'],
-                          dtype='str')
-        df_['label'] = 0
+            split = split.append(df_)
+        if file == 'train_set.txt':
+            train_df = shuffle(split)
+        else:
+            val_df = shuffle(split)
 
-    df = df.append(df_)
-    df = shuffle(df)
-    # split into train and val set
-    train_df, val_df = train_test_split(df, test_size=0.3, shuffle=True)
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
         print('creating dir: ', save_dir)
 
     val_df = val_df.astype({'label': 'int'})
+    train_df = train_df.astype({'label': 'int'})
 
     train_df.to_csv(os.path.join(save_dir, 'train_df.csv'), index=False)
     val_df.to_csv(os.path.join(save_dir, 'val_df.csv'), index=False)
@@ -124,7 +142,8 @@ for parameters in list(ParameterGrid(search_space_dict)):
 
     early_stopper = EarlyStopping(monitor='val_acc', patience=5, verbose=True)
     checkpoint_filepath = os.path.join(save_dir, 'checkpoint.hdf5')
-    checkpoint = ModelCheckpoint(filepath=checkpoint_filepath, save_best_only=True, save_weights_only=True, verbose=True,
+    checkpoint = ModelCheckpoint(filepath=checkpoint_filepath, save_best_only=True, save_weights_only=True,
+                                 verbose=True,
                                  monitor='val_acc', mode='max')
 
     logger = tf.keras.callbacks.TensorBoard(log_dir='logs/',
@@ -143,7 +162,7 @@ for parameters in list(ParameterGrid(search_space_dict)):
     print('\n*****\n\n\n predicting on test set with not fined tuned model\n\n\n*****\n')
     df_test = pd.read_csv('test_triplets.txt', sep=' ', names=['A', 'B', 'C'],
                           dtype='str')
-    for index, row in tqdm(df_test.iterrows()):
+    for index, row in tqdm(df_test.iterrows(), total=len(df_test)):
         images = [np.expand_dims(resize(imread(os.path.join('food', '{}.jpg'.format(row[col]))), input_shape), 0) for
                   col in ['A', 'B', 'C']]
         df_test.at[index, 'label'] = int(np.round(model.predict(images), 0))
@@ -177,7 +196,8 @@ for parameters in list(ParameterGrid(search_space_dict)):
                   metrics=['acc'])
 
     checkpoint_filepath2 = os.path.join(save_dir, 'checkpoint2.hdf5')
-    checkpoint = ModelCheckpoint(filepath=checkpoint_filepath2, save_best_only=True, save_weights_only=True, verbose=True,
+    checkpoint = ModelCheckpoint(filepath=checkpoint_filepath2, save_best_only=True, save_weights_only=True,
+                                 verbose=True,
                                  monitor='val_acc', mode='max')
 
     model.fit(train_dataset, validation_data=val_dataset, epochs=100,
@@ -200,7 +220,7 @@ for parameters in list(ParameterGrid(search_space_dict)):
                           dtype='str')
     print('\n*****\n\n\n predicting on test set \n\n\n*****\n')
 
-    for index, row in tqdm(df_test.iterrows()):
+    for index, row in tqdm(df_test.iterrows(), total=len(df_test)):
         images = [np.expand_dims(resize(imread(os.path.join('food', '{}.jpg'.format(row[col]))), input_shape), 0) for
                   col in ['A', 'B', 'C']]
         df_test.at[index, 'label'] = int(np.round(model.predict(images), 0))
