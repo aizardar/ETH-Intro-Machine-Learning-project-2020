@@ -1,18 +1,14 @@
 import os
-import pandas as pd
+
 import numpy as np
 import pandas as pd
-import numpy as np
-from sklearn.impute import KNNImputer
 import sklearn
-from tqdm import tqdm
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, ParameterGrid, GridSearchCV
-from sklearn.metrics import roc_auc_score
+import tensorflow as tf
+from models import dice_coef_loss
 from score_submission import get_score
-import os
-from utils import ExperimentLogger, mkdir, get_model
-from sklearn.ensemble import RandomForestClassifier
-import uuid
+from tqdm import tqdm
+from utils import handle_nans, scaling
+from utils import train_model
 
 
 # In[ ]:
@@ -39,57 +35,58 @@ def impute_mode(df):
     return df
 
 
-def preprocess(task1_parameters, with_val_set, train_features, val_features, test, val_labels, train_labels):
+def preprocess(parameters, with_val_set, train_features, val_features, test, val_labels, train_labels):
     """
     The preprocessing (imputing with KNN and extracting the features) takes a lot of time, better to do it once and store the data.
     """
+
     if not os.path.exists('imputed_data/new_train_features_imp_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                                              task1_parameters[
+                                                                                              parameters[
                                                                                                   'drop_features'])):
         print("Imputing training data")
 
         # check if KNN imputed data exists
-        if os.path.exists('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set, task1_parameters[
+        if os.path.exists('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set, parameters[
             'drop_features'])):
             train_features_imp = pd.read_csv(
                 'imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                               task1_parameters['drop_features']))
+                                                                               parameters['drop_features']))
             train_features_imp = impute_mode(train_features_imp)
 
         else:
             train_features_imp = impute_KNN(train_features)
             train_features_imp.to_csv('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                                                     task1_parameters[
+                                                                                                     parameters[
                                                                                                          'drop_features']),
                                       index=False)
             train_features_imp = impute_mode(train_features_imp)
         if with_val_set:
             # check if KNN imputed val set exists
             if os.path.exists('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                                             task1_parameters[
+                                                                                             parameters[
                                                                                                  'drop_features'])):
 
                 # get validation features
-                if os.path.exists('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(task1_parameters[
+                if os.path.exists('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
                                                                                             'drop_features'])):
                     val_features_imp_ = pd.read_csv(
-                        'imputed_data/knn_imputed_val_featdrop-{}.csv'.format(task1_parameters[
+                        'imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
                                                                                   'drop_features']))
                 else:
                     val_features_imp_ = impute_KNN(val_features)
-                    val_features_imp_.to_csv('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(task1_parameters[
+                    val_features_imp_.to_csv('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
                                                                                                        'drop_features']),
                                              index=False)
 
         print("Imputing test data")
         # check if KNN imputed test set exists
-        if os.path.exists('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(task1_parameters[
+        if os.path.exists('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
                                                                                      'drop_features'])):
-            test_imputed = pd.read_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(task1_parameters[
+            test_imputed = pd.read_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
                                                                                                   'drop_features']))
         else:
             test_imputed = impute_KNN(test)
-            test_imputed.to_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(task1_parameters[
+            test_imputed.to_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
                                                                                            'drop_features']),
                                 index=False)
 
@@ -169,40 +166,272 @@ def preprocess(task1_parameters, with_val_set, train_features, val_features, tes
 
         print("Extracting new features from the test data")
         if not os.path.exists(
-                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features'])):
+                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(parameters['drop_features'])):
             new_test_features_imp = new_df(test)
             new_test_features_imp.to_csv(
-                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features']),
+                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(parameters['drop_features']),
                 index=False)
         else:
             new_test_features_imp = pd.read_csv(
-                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features']))
+                'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(parameters['drop_features']))
 
         new_train_features_imp.to_csv('imputed_data/new_train_features_imp_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                                                          task1_parameters[
+                                                                                                          parameters[
                                                                                                               'drop_features']),
                                       index=False)
         train_labels.to_csv(
-            'imputed_data/train_labels_val-{}_featdrop-{}.csv'.format(with_val_set, task1_parameters['drop_features']),
+            'imputed_data/train_labels_val-{}_featdrop-{}.csv'.format(with_val_set, parameters['drop_features']),
             index=False)
         if with_val_set:
             new_val_features_imp.to_csv(
-                'imputed_data/new_val_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features']),
+                'imputed_data/new_val_features_imp_featdrop-{}.csv'.format(parameters['drop_features']),
                 index=False)
-            val_labels.to_csv('imputed_data/val_labels_featdrop-{}.csv'.format(task1_parameters['drop_features']),
+            val_labels.to_csv('imputed_data/val_labels_featdrop-{}.csv'.format(parameters['drop_features']),
                               index=False)
 
     else:
         print("Loading training data")
         new_train_features_imp = pd.read_csv(
             'imputed_data/new_train_features_imp_val-{}_featdrop-{}.csv'.format(with_val_set,
-                                                                                task1_parameters['drop_features']))
+                                                                                parameters['drop_features']))
         new_val_features_imp = pd.read_csv(
-            'imputed_data/new_val_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features']))
+            'imputed_data/new_val_features_imp_featdrop-{}.csv'.format(parameters['drop_features']))
         new_test_features_imp = pd.read_csv(
-            'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(task1_parameters['drop_features']))
+            'imputed_data/new_test_features_imp_featdrop-{}.csv'.format(parameters['drop_features']))
         train_labels = pd.read_csv(
-            'imputed_data/train_labels_val-{}_featdrop-{}.csv'.format(with_val_set, task1_parameters['drop_features']))
-        val_labels = pd.read_csv('imputed_data/val_labels_featdrop-{}.csv'.format(task1_parameters['drop_features']))
+            'imputed_data/train_labels_val-{}_featdrop-{}.csv'.format(with_val_set, parameters['drop_features']))
+        val_labels = pd.read_csv('imputed_data/val_labels_featdrop-{}.csv'.format(parameters['drop_features']))
 
     return val_labels, train_labels, new_test_features_imp, new_val_features_imp, new_train_features_imp
+
+
+def NN_pipeline(parameters, X_train_df, y_train_df, X_test_df, X_val_df, y_val_df, task,
+                experiment_logger, with_val_set):
+    if not os.path.exists('predictions.csv'):
+        # create submission dataframes that will be filled with the predictions
+        df_submission = pd.DataFrame(X_test_df.pid.values, columns=['pid'])
+        new_df_submission = True
+    else:
+        df_submission = pd.read_csv('predictions.csv')
+        new_df_submission = False
+
+    if new_df_submission or not os.path.exists('val_predictions.csv'):
+        df_submission_val = pd.DataFrame(X_val_df.pid.values, columns=['pid'])
+    else:
+        df_submission_val = pd.read_csv('val_predictions.csv')
+
+    print("Imputing training data")
+
+    # check if KNN imputed data exists
+    if os.path.exists('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set, parameters[
+        'drop_features'])):
+        train_features_imp = pd.read_csv(
+            'imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
+                                                                           parameters['drop_features']))
+        train_features_imp = impute_mode(train_features_imp)
+
+    else:
+        train_features_imp = impute_KNN(X_train_df)
+        train_features_imp.to_csv('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
+                                                                                                 parameters[
+                                                                                                     'drop_features']),
+                                  index=False)
+        train_features_imp = impute_mode(train_features_imp)
+    if with_val_set:
+        # check if KNN imputed val set exists
+        if os.path.exists('imputed_data/knn_imputed_train_val-{}_featdrop-{}.csv'.format(with_val_set,
+                                                                                         parameters[
+                                                                                             'drop_features'])):
+
+            # get validation features
+            if os.path.exists('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
+                                                                                        'drop_features'])):
+                val_features_imp_ = pd.read_csv(
+                    'imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
+                                                                              'drop_features']))
+            else:
+                val_features_imp_ = impute_KNN(X_val_df)
+                val_features_imp_.to_csv('imputed_data/knn_imputed_val_featdrop-{}.csv'.format(parameters[
+                                                                                                   'drop_features']),
+                                         index=False)
+
+    print("Imputing test data")
+    # check if KNN imputed test set exists
+    if os.path.exists('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
+                                                                                 'drop_features'])):
+        test_imputed = pd.read_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
+                                                                                              'drop_features']))
+    else:
+        test_imputed = impute_KNN(X_test_df)
+        test_imputed.to_csv('imputed_data/knn_imputed_test_featdrop-{}.csv'.format(parameters[
+                                                                                       'drop_features']),
+                            index=False)
+
+    train_path = 'nan_handling/train{}_{}.csv'.format(parameters['nan_handling'], parameters['drop_features'])
+    x_test_path = 'nan_handling/test{}_{}.csv'.format(parameters['nan_handling'], parameters['drop_features'])
+    x_val_path = 'nan_handling/val{}_{}.csv'.format(parameters['nan_handling'], parameters['drop_features'])
+    y_val_df = y_val_df.reset_index(drop=True)
+    if os.path.isfile(train_path) and os.path.isfile(x_val_path) and os.path.isfile(x_test_path):
+        X_train_df = pd.read_csv(train_path)
+        X_test_df = pd.read_csv(x_test_path)
+        X_val_df = pd.read_csv(x_val_path)
+    else:
+        X_train_df, imp = handle_nans(train_features_imp, parameters, 42)
+        X_train_df.to_csv(train_path, index=False)
+        if not parameters['nan_handling'] in ['zero', 'minusone']:
+            X_test_df = pd.DataFrame(data=imp.transform(test_imputed), columns=test_imputed.columns)
+            X_val_df = pd.DataFrame(data=imp.transform(val_features_imp_), columns=val_features_imp_.columns)
+        else:
+            X_test_df, _ = handle_nans(test_imputed, parameters, 42)
+            X_val_df, _ = handle_nans(val_features_imp_, parameters, 42)
+        X_test_df.to_csv(x_test_path, index=False)
+        X_val_df.to_csv(x_val_path, index=False)
+
+    if parameters['collapse_time'] == 'yes':
+        x_train = X_train_df.groupby('pid').mean().reset_index()
+        x_test = X_test_df.groupby('pid').mean().reset_index()
+        x_val = X_val_df.groupby('pid').mean().reset_index()
+        input_shape = x_train.shape
+
+    if parameters['collapse_time'] == 'no':
+        x_train = []
+        for i, subject in enumerate(list(dict.fromkeys(y_train_df['pid'].values.tolist()))):
+            if parameters['with_time'] == 'yes':
+                x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 1:])
+            elif parameters['with_time'] == 'no':
+                x_train.append(X_train_df.loc[X_train_df['pid'] == subject].values[:, 2:])
+
+        x_val = []
+        for i, subject in enumerate(list(dict.fromkeys(y_val_df['pid'].values.tolist()))):
+            if parameters['with_time'] == 'yes':
+                x_val.append(X_val_df.loc[X_val_df['pid'] == subject].values[:, 1:])
+            elif parameters['with_time'] == 'no':
+                x_val.append(X_val_df.loc[X_val_df['pid'] == subject].values[:, 2:])
+
+        x_test = []
+        for i, subject in enumerate(list(dict.fromkeys(X_test_df['pid'].values.tolist()))):
+            if parameters['with_time'] == 'yes':
+                x_test.append(X_test_df.loc[X_test_df['pid'] == subject].values[:, 1:])
+            if parameters['with_time'] == 'no':
+                x_test.append(X_test_df.loc[X_test_df['pid'] == subject].values[:, 2:])
+
+        input_shape = x_train[0].shape
+
+    if not parameters['standardizer'] == 'none':
+        x_train, scaler = scaling(x_train, parameters)
+        x_val, _ = scaling(x_val, parameters, scaler)
+        x_test, _ = scaling(x_test, parameters, scaler)
+    else:
+        x_scaler = None
+
+    if parameters['collapse_time'] == 'yes':
+        if parameters['task'] == 12:
+            y_train1 = y_train_df.iloc[:, 1:12]
+        else:
+            y_train1 = y_train_df.iloc[:, 1:11]
+        y_train2 = y_train_df.iloc[:, 11]
+        y_train3 = y_train_df.iloc[:, 12:]
+    else:
+        if parameters['task'] == 12:
+            y_train1 = list(y_train_df.values[:, 1:12])
+        else:
+            y_train1 = list(y_train_df.values[:, 1:11])
+        y_train2 = list(y_train_df.values[:, 11])
+        y_train3 = list(y_train_df.values[:, 12:])
+
+    if task == 1 or task == 12:
+        print('\n\n**** Training model1 **** \n\n')
+        loss = parameters['task1_loss']
+        if loss == 'dice':
+            loss = dice_coef_loss
+        model1 = train_model(parameters, input_shape, x_train, y_train1, loss, parameters['epochs'], 42,
+                             parameters['task'],
+                             y_train_df)
+
+    if task == 2:
+        loss = parameters['task2_loss']
+        if loss == 'dice':
+            loss = dice_coef_loss
+        print('\n\n**** Training model2 **** \n\n')
+        model2 = train_model(parameters, input_shape, x_train, y_train2, loss, parameters['epochs'], 42, 2,
+                             y_train_df)
+
+    if task == 3:
+        loss = parameters['task3_loss']
+        if loss == 'dice':
+            loss = dice_coef_loss
+        elif loss == 'huber':
+            loss = 'huber_loss'
+        print('\n\n**** Training model3 **** \n\n')
+        model3 = train_model(parameters, input_shape, x_train, y_train3, loss, parameters['epochs'], 42, 3,
+                             y_train_df)
+
+    if parameters['model'] == 'resnet' or parameters['model'] == 'simple_conv_model':
+        x_test = np.expand_dims(x_test, -1)
+        x_val = np.expand_dims(x_val, -1)
+
+    if not parameters['model'].startswith('lin'):
+        test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
+        test_dataset = test_dataset.batch(batch_size=parameters['batch_size'])
+
+        val_dataset = tf.data.Dataset.from_tensor_slices(x_val)
+        val_dataset = val_dataset.batch(batch_size=parameters['batch_size'])
+
+    final_df = pd.read_csv('final.csv')
+    if not os.path.exists('test_pred.csv'):
+        test_df = pd.DataFrame(columns=sample.columns)
+        test_df['pid'] = y_val_df['pid'].values
+        test_df.to_csv('test_pred.csv')
+    else:
+        test_df = pd.read_csv('test_pred.csv')
+
+    if task == 1:
+        # predict on validation set
+        val_prediction1 = model1.predict(val_dataset)
+        val_prediction_df = pd.DataFrame(val_prediction1, columns=y_val_df.columns[1:11])
+        val_score = get_score(y_val_df, val_prediction_df, task)
+        # if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
+        #     'task1_score'].max():
+        #     for col in val_prediction_df.columns:
+        #         val_df[col] = val_prediction_df[col]
+        #     val_df.reindex(columns=sample.columns)
+
+    if task == 2:
+        val_prediction2 = model2.predict(val_dataset)
+        val_prediction_df = pd.DataFrame(val_prediction2, columns=[y_val_df.columns[11]])
+        val_prediction_df['pid'] = y_val_df['pid']
+        val_score = get_score(y_val_df, val_prediction_df, task)
+        print('task 2 score: ', val_score)
+        experiment_logger.df['{}_score'.format('LABEL_Sepsis')] = val_score
+        if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
+            'task2_score'].max():
+            predictions_test = model2.predict_proba(test_dataset)
+            predict_prob_val = pd.DataFrame(np.ravel(val_prediction2[:, 1]), columns=['LABEL_Sepsis'])
+            predict_prob_test = pd.DataFrame(np.ravel(predictions_test[:, 1]), columns=['LABEL_Sepsis'])
+            if 'LABEL_Sepsis' in df_submission_val.columns:
+                df_submission_val.drop('LABEL_Sepsis', axis=1, inplace=True)
+            if 'LABEL_Sepsis' in df_submission.columns:
+                df_submission.drop('LABEL_Sepsis', axis=1, inplace=True)
+            df_submission_val = pd.concat([df_submission_val, predict_prob_val], axis=1, sort=False)
+            df_submission = pd.concat([df_submission, predict_prob_test], axis=1, sort=False)
+
+    if task == 3:
+        val_prediction3 = model3.predict(val_dataset)
+        val_prediction_df = pd.DataFrame(val_prediction3, columns=y_val_df.columns[12:])
+        val_prediction_df['pid'] = y_val_df['pid']
+        val_score = get_score(y_val_df, val_prediction_df, task)
+        print('task 3 score: ', val_score)
+        experiment_logger.df['{}_score'.format('LABEL_Sepsis')] = val_score
+        if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
+            'task3_score'].max():
+            predictions_test = model3.predict_proba(test_dataset)
+            predict_prob_val = pd.DataFrame(np.ravel(val_prediction3[:, 1]), columns=['LABEL_Sepsis'])
+            predict_prob_test = pd.DataFrame(np.ravel(predictions_test[:, 1]), columns=['LABEL_Sepsis'])
+            if 'LABEL_Sepsis' in df_submission_val.columns:
+                df_submission_val.drop('LABEL_Sepsis', axis=1, inplace=True)
+            if 'LABEL_Sepsis' in df_submission.columns:
+                df_submission.drop('LABEL_Sepsis', axis=1, inplace=True)
+            df_submission_val = pd.concat([df_submission_val, predict_prob_val], axis=1, sort=False)
+            df_submission = pd.concat([df_submission, predict_prob_test], axis=1, sort=False)
+
+    return df_submission_val, df_submission

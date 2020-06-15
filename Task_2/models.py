@@ -104,7 +104,8 @@ def threelayers(input_shape, loss, output_layer, task):
                       metrics=[dice_coef, 'mse', keras.metrics.AUC()])
     if task == 2:
         model.add(keras.layers.Dense(1, activation=output_layer))
-        model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+        model.compile(optimizer='adagrad', loss=loss,
+                      metrics=['sparse_categorical_accuracy', dice_coef, tf.keras.metrics.AUC()])
     if task == 3:
         model.add(keras.layers.Dense(4, activation='linear'))
         model.compile(optimizer='adagrad',
@@ -112,6 +113,7 @@ def threelayers(input_shape, loss, output_layer, task):
                       metrics=['mse'])
 
     return model
+
 
 def lstm(input_shape, loss, params, task):
     lstm_layer = tf.keras.layers.RNN(
@@ -131,7 +133,8 @@ def lstm(input_shape, loss, params, task):
                       metrics=[dice_coef, 'mse', keras.metrics.AUC()])
     if task == 2:
         model.add(keras.layers.Dense(1, activation=params['output_layer']))
-        model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+        model.compile(optimizer='adagrad', loss=loss,
+                      metrics=['sparse_categorical_accuracy', dice_coef, tf.keras.metrics.AUC()])
     if task == 3:
         model.add(keras.layers.Dense(4))
         model.compile(optimizer='adagrad',
@@ -182,7 +185,8 @@ class recurrent_net(kerastuner.HyperModel):
         if task == 2:
             outputs = keras.layers.Dense(1, activation=output_layer)(x)
             model = tf.keras.Model(inputs, outputs)
-            model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+            model.compile(optimizer='adagrad', loss=loss,
+                          metrics=['sparse_categorical_accuracy', dice_coef, tf.keras.metrics.AUC()])
         if task == 3:
             outputs = keras.layers.Dense(4, activation='linear')(x)
             model = tf.keras.Model(inputs, outputs)
@@ -232,7 +236,8 @@ class dense_model(kerastuner.HyperModel):
                           metrics=[dice_coef, 'mse', keras.metrics.AUC()])
         if task == 2:
             model.add(keras.layers.Dense(1, activation=output_layer))
-            model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+            model.compile(optimizer='adagrad', loss=loss,
+                          metrics=['sparse_categorical_accuracy', dice_coef, tf.keras.metrics.AUC()])
         if task == 3:
             model.add(keras.layers.Dense(4, activation='linear'))
             model.compile(optimizer='adagrad',
@@ -315,7 +320,8 @@ class simple_conv_model(kerastuner.HyperModel):
                           metrics=[dice_coef, 'mse', keras.metrics.AUC()])
         if task == 2:
             model.add(keras.layers.Dense(1, activation=output_layer))
-            model.compile(optimizer='adagrad', loss=loss, metrics=['sparse_categorical_accuracy', dice_coef])
+            model.compile(optimizer='adagrad', loss=loss,
+                          metrics=['sparse_categorical_accuracy', dice_coef, tf.keras.metrics.AUC()])
         if task == 3:
             model.add(keras.layers.Dense(4, activation='linear'))
             model.compile(optimizer='adagrad',

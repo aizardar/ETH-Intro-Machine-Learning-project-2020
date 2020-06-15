@@ -57,7 +57,7 @@ search_space_dict_task12 = {
     'impute_nn': ['yes'],
     'epochs': [epochs],
     'numbr_subjects': [num_subjects],
-    'task': [12],
+    'task': [2],
     'task12_activation': ['sigmoid'],
     'task1_loss': ['dice'],
     'with_time': ['yes', 'no'],

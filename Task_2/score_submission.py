@@ -14,7 +14,7 @@ def get_score(df_true, df_submission, task):
     if task == 1:
         task1 = np.mean([metrics.roc_auc_score(df_true[entry], df_submission[entry]) for entry in TESTS])
         return task1
-    if task == 2:
+    if task == 2 or task == '2NN':
         task2 = metrics.roc_auc_score(df_true['LABEL_Sepsis'], df_submission['LABEL_Sepsis'])
         return task2
     if task == 3:

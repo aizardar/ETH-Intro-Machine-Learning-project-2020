@@ -116,7 +116,7 @@ class train_dataset_notpeprocessed(Sequence):
         return x, y
 
 
-class pretr_inception():
+class Pretr_inception():
     def __init__(self, input_shape):
         self.input_shape = input_shape
         self.def_model()

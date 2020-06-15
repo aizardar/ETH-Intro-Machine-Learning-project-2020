@@ -6,14 +6,16 @@ import pandas as pd
 import sklearn
 import tensorflow as tf
 from fancyimpute import KNN
-from kerastuner import RandomSearch
+from kerastuner import RandomSearch, Hyperband
 from sklearn import preprocessing
-from sklearn.linear_model import LinearRegression, HuberRegressor
+from sklearn.linear_model import LinearRegression, HuberRegressor, SGDRegressor, Ridge
+from sklearn.svm import LinearSVC, LinearSVR, SVC, SVR
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import pandas as pd
 import uuid
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, RandomForestRegressor, \
+    ExtraTreesClassifier, ExtraTreesRegressor
 
 
 class ExperimentLogger():
@@ -80,6 +82,11 @@ def get_model(params):
             'fit_intercept': [True, False],
         }
         model = LinearRegression()
+    elif params['model'] == 'SGD_reg':
+        param_grid = {
+            'alpha': np.logspace(-10, -2, 10),
+        }
+        model = SGDRegressor()
     elif params['model'] == 'huber_reg':
         param_grid = {
             'epsilon': np.linspace(1.0, 3, 5),
@@ -87,10 +94,54 @@ def get_model(params):
             'fit_intercept': [True, False],
         }
         model = HuberRegressor()
+    elif params['model'] == 'ridge_reg':
+        param_grid = {
+            'alpha': np.logspace(-10, -2, 10),
+        }
+        model = Ridge()
+    elif params['model'] == 'extra_tree_cl':
+        param_grid = {
+            'n_estimators': np.linspace(100, 800, 4, dtype=int),
+            'max_features': ['auto', 'log2', None],
+            'criterion': ['gini', 'entropy']}
+        model = ExtraTreesClassifier()
+    elif params['model'] == 'extra_tree_reg':
+        param_grid = {
+            'n_estimators': np.linspace(100, 800, 4, dtype=int),
+            'max_features': ['auto', 'log2', None],
+            'criterion': ['gini', 'entropy']}
+        model = ExtraTreesRegressor()
+    elif params['model'] == 'SVC_rbf':
+        model = SVC(kernel='rbf', random_state=42, probability=True)
+    elif params['model'] == 'SVC_sig':
+        model = SVC(kernel='sigmoid', random_state=42, probability=True)
+    elif params['model'] == 'SVR_lin':
+        model = SVR(kernel='linear')
+    elif params['model'] == 'SVR_sig':
+        model = SVR(kernel='sigmoid')
+    elif params['model'] == 'SVR_rbf':
+        model = SVR(kernel='rbf')
+    elif params['model'] == 'SVR_poly':
+        model = SVR(kernel='poly')
 
+
+    if not params['with_grid_search_cv']:
+        param_grid = None
     return model, param_grid
 
+def bigprint(content):
+    print(
+        '\n\n\n\n\n\n\n\n\n *********************************************\n {} \n *********************************************\n\n\n\n\n\n\n\n\n'.format(
+            content))
 
+def get_feature_selector(params):
+    if params['feature_selection'] == 'l1_SVC':
+        return LinearSVC(penalty="l1", dual=False, max_iter=2000)
+    # this doesn't work
+    # if params['feature_selection'] == 'sgd_reg':
+    #     return LinearSVR(penalty="l1", dual=False, max_iter=2000)
+    else:
+        assert 1, 'wrong input'
 
 
 def mkdir(path):
@@ -209,9 +260,8 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
                                              patience=10,
                                              mode='min',
                                              restore_best_weights=True)
-    # todo
-    # callbacks = [CB_lr, CB_es]
-    callbacks = [CB_lr]
+    callbacks = [CB_lr, CB_es]
+    # callbacks = [CB_lr]
 
     if params['model'] in ['lin_reg', 'lin_huber', 'threelayers', 'svm', 'resnet', 'lstm']:
         if params['model'].startswith('lin'):
@@ -247,12 +297,20 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
 
         if not os.path.exists('tuner_trials'):
             os.mkdir('tuner_trials')
-        tuner = RandomSearch(hypermodel, objective=kerastuner.Objective(
-            "val_auc" * (params['task'] == 1 or params['task'] == 12) + "val_mse" * (params['task'] == 3),
+        # tuner = RandomSearch(hypermodel, objective=kerastuner.Objective(
+        #     "val_auc" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "val_mse" * (
+        #             params['task'] == 3),
+        #     direction="max"),
+        #                   max_trials=params['tuner_trials'],
+        #                   project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
+        #                                                                     params['task'], params['uid']))
+        tuner = Hyperband(hypermodel, objective=kerastuner.Objective(
+            "val_auc" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "val_mse" * (
+                    params['task'] == 3),
             direction="max"),
-                             max_trials=params['tuner_trials'],
-                             project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
-                                                                               params['task'], params['uid']))
+                          project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
+                                                                            params['task'], params['uid']),
+                          max_epochs=epochs)
         tuner.search_space_summary()
         tuner.search(train_dataset, validation_data=val_dataset, epochs=epochs,
                      steps_per_epoch=len(x_train) // params['batch_size'],

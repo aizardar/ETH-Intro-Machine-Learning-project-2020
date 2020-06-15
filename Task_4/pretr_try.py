@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from utils import train_dataset_preprocessed, train_dataset_notpeprocessed, pretr_inception
+from utils import train_dataset_preprocessed, train_dataset_notpeprocessed, Pretr_inception
 from preprocess import store_batches
 from skimage.io import imread
 from skimage.transform import resize
@@ -31,7 +31,7 @@ search_space_dict = {
     'optimizer2': [SGD(
         lr=0.00001,
         momentum=0.9)],
-    'ABC_combinations': ['all', 'swap_bc'],  # other cases not implemented yet
+    'ABC_combinations': ['swap_bc'],  # other cases not implemented yet
 }
 for parameters in list(ParameterGrid(search_space_dict)):
     print(parameters)
@@ -128,7 +128,7 @@ for parameters in list(ParameterGrid(search_space_dict)):
                                                    save_dir=save_dir)
     # %%
 
-    pretr_inception = pretr_inception(input_shape)
+    pretr_inception = Pretr_inception(input_shape)
     model = pretr_inception.model
 
     model.compile(loss='binary_crossentropy',
