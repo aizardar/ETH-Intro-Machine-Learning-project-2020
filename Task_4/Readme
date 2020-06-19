@@ -1,0 +1,36 @@
+The solution of this task i.e. to predict for unseen triplets (A, B, C) whether dish A is more similar in taste to B or C, is 
+obtained by using a triplet-loss architecture (https://arxiv.org/pdf/1503.03832.pdf). In this kind of architecture, multiple 
+parallel networks are trained which share weights among each other. During prediction time, input data is passed through one 
+network to compute the embedding representation of the input data. 
+
+Our network takes image triplets as input. Each image triplet contains a query image (A), a positive image (B) - image of the 
+dish which tastes similar to the taste of the dish in image A, and a negative image (C) - image of the dish which tastes 
+different than to the taste of dish in image A. All three images are fed independently into three identical deep neural 
+networks with shared architecture and parameters. We use a pre-trained version of the inception v3 model as our convolutional 
+neural network (CNN). On the top of this CNN model, we add a global average pooling and one dense layer with 4096 hidden units. To avoid overfitting we use a dropout of 0.7 and normalize the embeddings of the image.
+
+We then construct our triplet-loss architecture by concatenating the embeddings from three parallel networks and normalizing 
+them to get a linear embedding layer.  
+
+We use a custom triplet loss function to compute the loss. The triplet loss is defined as follows:
+L (query, pos, neg) = max(Dist (query, pos) - Dist (query, neg) + margin), where, Dist (x, y) is the squared euclidean 
+distance learned between the embedding of the image x and y. The objective of this function is to keep distance between the query and the positive image smaller than the distance between query and the negative image. Margin is a gap parameter that regularizes the gap between the distance of the two image pairs. We use a margin of 0.6 in this task. 
+
+We use two metrics - pos_euc_dist and neg_euc_dist to keep track of model training. As the model learns,  the difference 
+between both metrics increases. 
+
+We use RMSprop as an optimizer with a very low learning rate of 1e-6. To avoid overfitting, we use early stopping class 
+in Tensorflow. As a pre-processing step we resize all the images to 256 by 256 pixels. We then split our training data into 
+80 % training and 20 % validation dataset. 
+
+Furthermore, we use a custom data generator to feed batches of training and validation triplets during the training where 
+each batch contains 100 triplets. During training, we freeze all the layers of our pre-trained inception model. Therefore, 
+only the weights of layers above it are updated. Finally, model training is stopped when the minimum of the validation loss
+is reached.  
+
+To make predictions on the test data, we use our learned CNN to get the embeddings from the images in A, B and C. Our 
+model predicts 1 if the euclidean distance between A and B is less than the euclidean distance between A and C and 0 if 
+the euclidean distance between A and B is larger than the euclidean distance between A and C. 
+
+On further fine tuning the top layers of the inception model, we did not find an increase in the accuracy. We also 
+experimented with other pretrained models e.g., VGG16 but did not find an increase in the accuracy. 
