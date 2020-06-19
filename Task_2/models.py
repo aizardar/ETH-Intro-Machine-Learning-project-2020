@@ -1,5 +1,6 @@
 import tensorflow.keras as keras
 import tensorflow as tf
+from tensorflow.keras.metrics import AUC
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
@@ -101,7 +102,7 @@ def threelayers(input_shape, loss, output_layer, task):
             model.add(keras.layers.Dense(10, activation=output_layer))
         model.compile(optimizer='adagrad',
                       loss=loss,
-                      metrics=[dice_coef, 'mse', keras.metrics.AUC()])
+                      metrics=[dice_coef, AUC()])
     if task == 2:
         model.add(keras.layers.Dense(1, activation=output_layer))
         model.compile(optimizer='adagrad', loss=loss,

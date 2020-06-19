@@ -1,5 +1,5 @@
 import os
-
+from sklearn.metrics import roc_auc_score, r2_score
 import numpy as np
 import pandas as pd
 import sklearn
@@ -373,11 +373,12 @@ def NN_pipeline(parameters, X_train_df, y_train_df, X_test_df, X_val_df, y_val_d
     if not parameters['model'].startswith('lin'):
         test_dataset = tf.data.Dataset.from_tensor_slices(x_test)
         test_dataset = test_dataset.batch(batch_size=parameters['batch_size'])
+        # test_dataset = test_dataset.batch()
+
 
         val_dataset = tf.data.Dataset.from_tensor_slices(x_val)
         val_dataset = val_dataset.batch(batch_size=parameters['batch_size'])
 
-    final_df = pd.read_csv('final.csv')
     if not os.path.exists('test_pred.csv'):
         test_df = pd.DataFrame(columns=sample.columns)
         test_df['pid'] = y_val_df['pid'].values
@@ -396,16 +397,47 @@ def NN_pipeline(parameters, X_train_df, y_train_df, X_test_df, X_val_df, y_val_d
         #         val_df[col] = val_prediction_df[col]
         #     val_df.reindex(columns=sample.columns)
 
+    if task == 12:
+        val_prediction12 = model1.predict(val_dataset)
+        val_prediction_df = pd.DataFrame(val_prediction12, columns=y_val_df.columns[1:12])
+        predictions_test = model1.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(predictions_test, columns=y_val_df.columns[1:12])
+        for label in y_val_df.columns[1:12]:
+            val_score = roc_auc_score(y_val_df[label], val_prediction_df[label])
+            print(f'task 12 score label {label}: ', val_score)
+            experiment_logger.df['{}_score'.format(label)] = val_score
+            if label == 'LABEL_Sepsis':
+                if experiment_logger.previous_results_empty or (val_score > experiment_logger.previous_results2[
+                '{}_score'.format(label)].max() and val_score > experiment_logger.previous_results12[
+                '{}_score'.format(label)].max()):
+                    if label in df_submission_val.columns:
+                        df_submission_val.drop(label, axis=1, inplace=True)
+                    if label in df_submission.columns:
+                        df_submission.drop(label, axis=1, inplace=True)
+                    df_submission_val = pd.concat([df_submission_val, val_prediction_df[label]], axis=1, sort=False)
+                    df_submission = pd.concat([df_submission, test_prediction_df[label]], axis=1, sort=False)
+            else:
+                if experiment_logger.previous_results_empty or (val_score > experiment_logger.previous_results1[
+                '{}_score'.format(label)].max() and val_score > experiment_logger.previous_results12[
+                '{}_score'.format(label)].max()):
+                    if label in df_submission_val.columns:
+                        df_submission_val.drop(label, axis=1, inplace=True)
+                    if label in df_submission.columns:
+                        df_submission.drop(label, axis=1, inplace=True)
+                    df_submission_val = pd.concat([df_submission_val, val_prediction_df[label]], axis=1, sort=False)
+                    df_submission = pd.concat([df_submission, test_prediction_df[label]], axis=1, sort=False)
+
     if task == 2:
         val_prediction2 = model2.predict(val_dataset)
         val_prediction_df = pd.DataFrame(val_prediction2, columns=[y_val_df.columns[11]])
-        val_prediction_df['pid'] = y_val_df['pid']
-        val_score = get_score(y_val_df, val_prediction_df, task)
+        # val_prediction_df['pid'] = y_val_df['pid']
+        label = 'LABEL_Sepsis'
+        val_score = roc_auc_score(y_val_df[label], val_prediction_df[label])
         print('task 2 score: ', val_score)
         experiment_logger.df['{}_score'.format('LABEL_Sepsis')] = val_score
         if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
             'task2_score'].max():
-            predictions_test = model2.predict_proba(test_dataset)
+            predictions_test = model2.predict(test_dataset)
             predict_prob_val = pd.DataFrame(np.ravel(val_prediction2[:, 1]), columns=['LABEL_Sepsis'])
             predict_prob_test = pd.DataFrame(np.ravel(predictions_test[:, 1]), columns=['LABEL_Sepsis'])
             if 'LABEL_Sepsis' in df_submission_val.columns:
@@ -416,22 +448,22 @@ def NN_pipeline(parameters, X_train_df, y_train_df, X_test_df, X_val_df, y_val_d
             df_submission = pd.concat([df_submission, predict_prob_test], axis=1, sort=False)
 
     if task == 3:
+        VITALS = ['LABEL_RRate', 'LABEL_ABPm', 'LABEL_SpO2', 'LABEL_Heartrate']
         val_prediction3 = model3.predict(val_dataset)
         val_prediction_df = pd.DataFrame(val_prediction3, columns=y_val_df.columns[12:])
-        val_prediction_df['pid'] = y_val_df['pid']
-        val_score = get_score(y_val_df, val_prediction_df, task)
-        print('task 3 score: ', val_score)
-        experiment_logger.df['{}_score'.format('LABEL_Sepsis')] = val_score
-        if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
-            'task3_score'].max():
-            predictions_test = model3.predict_proba(test_dataset)
-            predict_prob_val = pd.DataFrame(np.ravel(val_prediction3[:, 1]), columns=['LABEL_Sepsis'])
-            predict_prob_test = pd.DataFrame(np.ravel(predictions_test[:, 1]), columns=['LABEL_Sepsis'])
-            if 'LABEL_Sepsis' in df_submission_val.columns:
-                df_submission_val.drop('LABEL_Sepsis', axis=1, inplace=True)
-            if 'LABEL_Sepsis' in df_submission.columns:
-                df_submission.drop('LABEL_Sepsis', axis=1, inplace=True)
-            df_submission_val = pd.concat([df_submission_val, predict_prob_val], axis=1, sort=False)
-            df_submission = pd.concat([df_submission, predict_prob_test], axis=1, sort=False)
+        predictions_test = model3.predict(test_dataset)
+        test_prediction_df = pd.DataFrame(predictions_test, columns=y_val_df.columns[12:])
+        for label in VITALS:
+            val_score = r2_score(val_prediction_df[label], y_val_df[label])
+            print(f'task 3 score label {label}: ', val_score)
+            experiment_logger.df['{}_score'.format(label)] = val_score
+            if experiment_logger.previous_results_empty or val_score > experiment_logger.previous_results[
+                '{}_score'.format(label)].max():
+                if label in df_submission_val.columns:
+                    df_submission_val.drop(label, axis=1, inplace=True)
+                if label in df_submission.columns:
+                    df_submission.drop(label, axis=1, inplace=True)
+                df_submission_val = pd.concat([df_submission_val, val_prediction_df[label]], axis=1, sort=False)
+                df_submission = pd.concat([df_submission, test_prediction_df[label]], axis=1, sort=False)
 
     return df_submission_val, df_submission

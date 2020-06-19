@@ -2,6 +2,7 @@ import os
 import random
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from preprocess import preprocess, NN_pipeline
 from score_submission import get_score, get_all_scores
 from search_spaces import *
@@ -12,12 +13,11 @@ from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 from utils import ExperimentLogger, mkdir, get_model, get_feature_selector, bigprint
 
-# In[ ]:
 save_path = 'new_try_results/'
 mkdir(save_path)
 with_val_set = True
-for task in [1, 2, 3, '2NN', '3NN']:
-# for task in ['3NN']:
+for task in [1, 2, 3, 12, '2NN', '3NN']:
+    # for task in ['3NN']:
     # initialise experiment logger for each task
     if task == 1:
         search_space = list(ParameterGrid(task1_parameters_searchspace))
@@ -38,6 +38,9 @@ for task in [1, 2, 3, '2NN', '3NN']:
         task = 3
         search_space = list(ParameterGrid(task3_parameters_searchspace_gridearchcv))
 
+    elif task == 12:
+        search_space = list(ParameterGrid(search_space_dict_task12))
+
     for parameters in random.sample(search_space, len(search_space)):
         already_tried = False
         # initialise experiment logger for each task
@@ -47,7 +50,12 @@ for task in [1, 2, 3, '2NN', '3NN']:
             if experiment_logger1.already_tried:
                 print(f'already tried these parameters for task {task}: {parameters}')
                 already_tried = True
-            print('**** task1_parameters ', task1_parameters, '****')
+
+        if task == 12:
+            experiment_logger12 = ExperimentLogger(parameters, task=12, save_path=save_path)
+            if experiment_logger12.already_tried:
+                print(f'already tried these parameters for task {task}: {parameters}')
+                already_tried = True
 
         if task == 2 or task == '2NN':
             task2_parameters = parameters
@@ -56,16 +64,12 @@ for task in [1, 2, 3, '2NN', '3NN']:
                 print(f'already tried these parameters for task {task}: {parameters}')
                 already_tried = True
 
-            print('**** task2_parameters ', task2_parameters, '****')
-
         if task == 3 or task == '3NN':
             task3_parameters = parameters
             experiment_logger3 = ExperimentLogger(task3_parameters, task=3, save_path=save_path)
             if experiment_logger3.already_tried:
                 print(f'already tried these parameters for task {task}: {parameters}')
                 already_tried = True
-
-            print('**** task3_parameters ', task3_parameters, '****')
 
         if not already_tried:
             bigprint(f'New experiment for task {task}: {parameters}')
@@ -108,7 +112,13 @@ for task in [1, 2, 3, '2NN', '3NN']:
                                                                val_labels, task=2,
                                                                experiment_logger=experiment_logger2,
                                                                with_val_set=with_val_set)
-            if task == '3NN':
+            elif task == 12:
+                df_submission_val, df_submission = NN_pipeline(parameters,
+                                                               train_features, train_labels, test, val_features,
+                                                               val_labels, task=12,
+                                                               experiment_logger=experiment_logger12,
+                                                               with_val_set=with_val_set)
+            elif task == '3NN':
                 df_submission_val, df_submission = NN_pipeline(parameters,
                                                                train_features, train_labels, test, val_features,
                                                                val_labels, task=3,
@@ -301,6 +311,10 @@ for task in [1, 2, 3, '2NN', '3NN']:
                 experiment_logger2.df['task2_score'] = score
                 experiment_logger2.save()
 
+            if task == 12:
+                experiment_logger12.df['task12_score'] = score
+                experiment_logger12.save()
+
             if task == 3 or task == '3NN':
                 experiment_logger3.df['task3_score'] = score
                 experiment_logger3.save()
@@ -308,6 +322,7 @@ for task in [1, 2, 3, '2NN', '3NN']:
             df_submission.to_csv(r'predictions.csv', index=False, float_format='%.3f')
             df_submission.to_csv('prediction.zip', index=False, float_format='%.3f', compression='zip')
             df_submission_val.to_csv(r'val_predictions.csv', index=False, float_format='%.3f')
+            tf.keras.backend.clear_session()
             print("All done !")
         else:
             train_labels = pd.read_csv("train_labels.csv").sort_values(by='pid')

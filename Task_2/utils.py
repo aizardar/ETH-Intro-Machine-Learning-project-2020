@@ -56,6 +56,23 @@ class ExperimentLogger():
             self.previous_results_empty = True
             return 'empty'
 
+class ExperimentLogger12(ExperimentLogger):
+    def init(self):
+        self.previous_results1 = self.load_previous_results(1)
+        self.previous_results2 = self.load_previous_results(2)
+        self.previous_results12 = self.load_previous_results(12)
+        super().__init__()
+    def load_previous_results(self, task):
+        if os.path.exists(os.path.join(self.save_path, f'experiment_logs{task}.csv')):
+            self.previous_results_empty = False
+            return pd.read_csv(os.path.join(self.save_path, f'experiment_logs{task}.csv'))
+        else:
+            self.previous_results_empty = True
+            return 'empty'
+
+
+
+
 
 def get_model(params):
     if params['model'] == 'random_forest_cl':
@@ -124,15 +141,16 @@ def get_model(params):
     elif params['model'] == 'SVR_poly':
         model = SVR(kernel='poly')
 
-
     if not params['with_grid_search_cv']:
         param_grid = None
     return model, param_grid
+
 
 def bigprint(content):
     print(
         '\n\n\n\n\n\n\n\n\n *********************************************\n {} \n *********************************************\n\n\n\n\n\n\n\n\n'.format(
             content))
+
 
 def get_feature_selector(params):
     if params['feature_selection'] == 'l1_SVC':
@@ -248,18 +266,25 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
     """
     Callbacks 
     """
-    CB_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 patience=10,
-                                                 verbose=1,
-                                                 min_delta=0.0001,
-                                                 min_lr=1e-6)
+    CB_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_auc" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "val_mse" * (
+                params['task'] == 3),
+        patience=3,
+        verbose=1,
+        mode="max" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "min" * (
+                params['task'] == 3),
+        min_delta=0.0001,
+        min_lr=1e-6)
 
-    CB_es = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                             min_delta=0.0001,
-                                             verbose=1,
-                                             patience=10,
-                                             mode='min',
-                                             restore_best_weights=True)
+    CB_es = tf.keras.callbacks.EarlyStopping(
+        monitor="val_auc" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "val_mse" * (
+                params['task'] == 3),
+        min_delta=0.00001,
+        verbose=1,
+        patience=10,
+        mode="max" * (params['task'] == 1 or params['task'] == 12 or params['task'] == 2) + "min" * (
+                params['task'] == 3),
+        restore_best_weights=True)
     callbacks = [CB_lr, CB_es]
     # callbacks = [CB_lr]
 
@@ -310,7 +335,7 @@ def train_model(params, input_shape, x_train, y_train, loss, epochs, seed, task,
             direction="max"),
                           project_name='keras_tuner/{}_{}_task{}_{}'.format(params['model'], input_shape,
                                                                             params['task'], params['uid']),
-                          max_epochs=epochs)
+                          max_epochs=epochs, factor=epochs // params['tuner_trials'])
         tuner.search_space_summary()
         tuner.search(train_dataset, validation_data=val_dataset, epochs=epochs,
                      steps_per_epoch=len(x_train) // params['batch_size'],

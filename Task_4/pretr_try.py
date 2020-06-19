@@ -23,7 +23,6 @@ search_space_dict = {
     'use_preprocessed': [False],
     'input_shape': [(128, 128)],
     'batch_size': [128],
-    'uid': [uuid.uuid4()],
     'date': [datetime.date.today()],
     'optimizer1': [SGD(
         lr=0.0001,
@@ -34,6 +33,7 @@ search_space_dict = {
     'ABC_combinations': ['swap_bc'],  # other cases not implemented yet
 }
 for parameters in list(ParameterGrid(search_space_dict)):
+    parameters['uid'] = uuid.uuid4()
     print(parameters)
     parameters['save_dir'] = 'results/{}_{}'.format(parameters['date'], parameters['uid'])
     experiment_scores = pd.DataFrame([[]])
