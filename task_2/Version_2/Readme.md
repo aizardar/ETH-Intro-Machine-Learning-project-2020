@@ -23,10 +23,15 @@ To obtain the solution of subtasks 1 and 2, we use a random forest classifier. F
 # **Meta data**
 
 'Temp' is the body temperature [Celsius]
+
 'RRate' is the respiration rate of the patient [breath/min]
+
 ABPm, ABPd, ABPs are the mean arterial, diastolic and systolic blood pressures of the patient [mmHg],
+
 'Heartrate' is the number of heart beats per minute [heart beats/min],
+
 'SpO2' is pulse oximetry-measured oxygen saturation of the blood [%].
+
 'EtCo2' is the CO2 pressure during expiration [mmHg]. 
 
 PTT: a test which measures the time it takes for a blood clot to form [sec.]
