@@ -1,7 +1,21 @@
-In this version, data imputation was done usign k-neighbours and mode. 
-New features were extracted from the time series of each patient. 
+In this project, our aim is to predict sepsis in patients. 
+
+We start by addressing the missing features both in training and test set. we impute the missing values of each feature using mean value from first nearest neighbours . This is done for each unique patient id. Sklearn’s KNNImputer class is used for the imputation.
+Following the data imputation, we extract seven new standard set of features - minimum, maximum, mean, standard deviation, median, skewness, and kurtosis from each feature for every unique patient id.
+These new features for every patient are then used to fit the model. 
 
 For task 1 and 2, RandomForestClassifier gave better auc score than SVC.
 
 For task 3, again RandomForestRegressor was found to give better r2 score than linear regressor except for LABEL_SaO2. 
 
+
+  
+
+For subtask 1 and 2, we find random forest classifier to give better roc_auc scores on the validation set. Sklearn’s RandomForestClassifier is used for the training. Predictions between 0 and 1 are made by predicting the probability on the test data. 
+
+
+For subtask 3, we find random forest regressor to give better r2 score on the validation set except LABEL_SpO2 for which linear regression gave better r2 score. Again, we use Sklearn’s relevant classes for training. 
+
+On further hyperparameter tuning of both random forest classifier and random forest regressor, we find n_estimator = 200 to give better roc_auc and r2 score, respectively. 
+
+To obtain the solution of subtasks 1 and 2, we use a random forest classifier. For subtask 3, we use linear regression - to predict mean value of SpO2 and random forest regression to predict mean values of the rest of key vital signs.  
