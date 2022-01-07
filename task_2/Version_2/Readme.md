@@ -20,7 +20,7 @@ On further hyperparameter tuning of both random forest classifier and random for
 
 To obtain the solution of subtasks 1 and 2, we use a random forest classifier. For subtask 3, we use linear regression - to predict mean value of SpO2 and random forest regression to predict mean values of the rest of key vital signs.  
 
-# ** Meta data **
+# **Meta data**
 
 'Temp' is the body temperature [Celsius]
 'RRate' is the respiration rate of the patient [breath/min]
